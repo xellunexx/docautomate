@@ -313,3 +313,27 @@ code.copy.copied { background: var(--ok-bg); border-color: var(--ok-line); }
 .facts dd a, .files a, .tpl-list a { text-decoration: none; }
 .facts dd a:hover, .files a:hover, .tpl-list a:hover { text-decoration: underline; }
 .head-row + .intro { margin-top: 6px; }
+
+/* ---------------------------------------------------------------- stage 1: bases */
+.ref { font-size: .8rem; font-weight: 600; color: var(--muted); background: var(--sunken);
+  border: 1px solid var(--line-soft); border-radius: var(--r-sm); padding: 2px 8px; vertical-align: middle; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 14px; }
+.filters input[name=q] { min-width: 220px; }
+.filters .check { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; }
+.table-wrap { overflow-x: auto; }
+tr.row-link { cursor: pointer; }
+tr.row-link:hover td { background: var(--accent-soft); }
+.group-head { font-size: 1rem; margin: 22px 0 8px; }
+.addr-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.addr-row input { flex: 1; }
+#f-position_new { margin-top: 6px; }
+.attach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.attach-box { border: 1px solid var(--line-soft); border-radius: var(--r); padding: 10px 12px; background: var(--sunken); }
+.attach-box h3 { font-size: .92rem; margin: 0 0 6px; }
+.attach-box ul.files { list-style: none; margin: 0 0 8px; padding: 0; font-size: .88rem; }
+.attach-box ul.files li { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; padding: 2px 0; }
+.attach-up { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.attach-up input[type=file] { max-width: 100%; font-size: .85rem; }
+form.inline { display: inline; }
+.btn.link.danger { color: var(--err); }
+.filters select, .filters input { width: auto; max-width: 260px; }

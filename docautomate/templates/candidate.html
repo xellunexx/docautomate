@@ -1,18 +1,18 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import field, error_box %}
-{% block title %}{{ row.name_cyr if row else 'Нов кандидат' }}{% endblock %}
+{% from '_macros.html' import field, error_box, attachments %}
+{% block title %}{{ row.name_cyr if row else 'Нов работник' }}{% endblock %}
 {% block body %}
-<p class="crumbs"><a href="{{ url_for('candidates') }}">Кандидати</a> /</p>
+<p class="crumbs"><a href="{{ url_for('candidates') }}">База Работници</a> /</p>
 <div class="head-row">
-  <h1>{{ row.name_cyr if row else 'Нов кандидат' }}</h1>
-  {% if row %}<a class="btn primary" href="{{ url_for('case_edit', candidate_id=row.id) }}" title="Отваря нов случай с този кандидат вече избран">+ Нов случай за кандидата</a>{% endif %}
+  <h1>{{ row.name_cyr if row else 'Нов работник' }}{% if row %} <span class="ref" title="Уникален номер на записа. Постоянен, не се променя.">№ {{ row.ref_no }}</span>{% endif %}</h1>
+  {% if row %}<a class="btn primary" href="{{ url_for('case_edit', candidate_id=row.id) }}" title="Отваря нов случай с този работник: работодател, длъжност и тип виза се попълват от профила">+ Нов случай за работника</a>{% endif %}
 </div>
-<p class="intro">{{ 'Промените тук влизат във всички документи, генерирани след запис. Вече генерираните PDF не се променят.' if row else 'Попълнете данните и натиснете „Запиши кандидата“ най-долу. Задължително е само името на кирилица.' }}</p>
+<p class="intro">{{ 'Промените тук влизат във всички документи, генерирани след запис. Вече генерираните PDF не се променят.' if row else 'Попълнете данните и натиснете „Запиши работника“ най-долу. Профилът се записва, когато са попълнени всички полета със звездичка и е избран работодател.' }}</p>
 {{ error_box(errors) }}
 
 <section class="panel mrz" id="mrz-panel">
   <h2>Попълни от паспорта (по желание)</h2>
-  <p class="help">Изберете снимка или PDF на страницата със снимката и натиснете „Разчети скана“. Програмата чете двата реда с <code>&lt;&lt;&lt;</code> най-долу и попълва: латиница, паспорт №, пол, дата на раждане, валиден до, гражданство, издаден от. Попълнените полета светват в жълто. <b>Нищо не се записва, докато не натиснете „Запиши кандидата“.</b> Датата на издаване и имената на кирилица въведете ръчно.</p>
+  <p class="help">Изберете снимка или PDF на страницата със снимката и натиснете „Разчети скана“. Програмата чете двата реда с <code>&lt;&lt;&lt;</code> най-долу и попълва: латиница, паспорт №, пол, дата на раждане, валиден до, гражданство, издаден от. Попълнените полета светват в жълто. <b>Нищо не се записва, докато не натиснете „Запиши работника“.</b> Датата на издаване и имената на кирилица въведете ръчно.</p>
   <div class="mrz-row">
     <input type="file" id="mrz-file" accept="image/*,.pdf" aria-label="Изберете скан на паспорта за разчитане" title="Снимка (JPG, PNG) или PDF на страницата със снимката">
     <button type="button" class="btn" id="mrz-read" {{ 'disabled' if not ocr }} title="Чете избрания скан и попълва полетата отдолу. Не записва нищо.">Разчети скана</button>
@@ -28,23 +28,51 @@
 </section>
 
 <form method="post" enctype="multipart/form-data" class="grid-form" id="cand-form">
-  {% for f in fields %}{{ field(f, values, errors, countries) }}{% endfor %}
-  <div class="field wide">
-    <label for="f-scan">Пази скана на паспорта към кандидата</label>
-    <input type="file" id="f-scan" name="passport_scan" accept="image/*,.pdf">
-    <p class="help">По желание. Файлът се записва при „Запиши кандидата“ и остава на този компютър.{% if row and row.passport_scan %} <a href="{{ url_for('candidate_scan', cid=row.id) }}" target="_blank" title="Отваря записания скан в нов раздел">Отвори записания скан</a>{% endif %}</p>
+  {% set req = fields|selectattr('required')|list %}
+  {% for f in req %}{{ field(f, values, errors, countries) }}{% endfor %}
+  <div class="field {{ 'has-error' if errors.get('employer_id') }}">
+    <label for="f-employer_id">Работодател <span class="req" aria-label="задължително">*</span></label>
+    <select id="f-employer_id" name="employer_id">
+      <option value="">— изберете —</option>
+      {% for e in employers %}<option value="{{ e.id }}" {{ 'selected' if values.get('employer_id')|string == e.id|string }}>{{ e.name }}</option>{% endfor %}
+    </select>
+    {% if errors.get('employer_id') %}<p class="err">{{ errors.employer_id }}</p>{% else %}<p class="help">От „База Работодатели“. Няма го? <a href="{{ url_for('employer') }}" target="_blank" title="Отваря нов работодател в нов раздел">Добавете работодател</a> и презаредете.</p>{% endif %}
   </div>
-  <div class="form-actions"><button class="btn primary" title="Записва всички полета на кандидата">Запиши кандидата</button></div>
+  <div class="field {{ 'has-error' if errors.get('workplace_address') }}">
+    <label for="f-workplace_address">Адрес на месторабота</label>
+    <select id="f-workplace_address" name="workplace_address" data-current="{{ values.get('workplace_address') or '' }}">
+      <option value="">—</option>
+      {% for a in addresses %}<option value="{{ a.address }}" data-emp="{{ a.employer_id }}" {{ 'selected' if values.get('workplace_address') == a.address and values.get('employer_id')|string == a.employer_id|string }}>{{ a.address }}</option>{% endfor %}
+    </select>
+    {% if errors.get('workplace_address') %}<p class="err">{{ errors.workplace_address }}</p>{% else %}<p class="help">Адресите на избрания работодател</p>{% endif %}
+  </div>
+  <div class="field {{ 'has-error' if errors.get('position_id') }}">
+    <label for="f-position_id">Длъжност</label>
+    <select id="f-position_id" name="position_id">
+      <option value="">—</option>
+      {% for p in positions %}<option value="{{ p.id }}" data-emp="{{ p.employer_id }}" {{ 'selected' if values.get('position_id')|string == p.id|string }}>{{ p.title }}{% if p.nkpd %} ({{ p.nkpd }}){% endif %}</option>{% endfor %}
+    </select>
+    <input id="f-position_new" name="position_new" value="{{ values.get('position_new') or '' }}" placeholder="или напишете нова длъжност" aria-label="Нова длъжност">
+    {% if errors.get('position_id') %}<p class="err">{{ errors.position_id }}</p>{% else %}<p class="help">Изберете от длъжностите на работодателя или напишете нова: тя се добавя към работодателя при запис</p>{% endif %}
+  </div>
+  {% for f in fields if not f.required %}{{ field(f, values, errors, countries) }}{% endfor %}
+  <div class="field wide">
+    <label for="f-scan">Скан на паспорта (за разчитане и справка)</label>
+    <input type="file" id="f-scan" name="passport_scan" accept="image/*,.pdf">
+    <p class="help">По желание. Файлът се записва при „Запиши работника“ и остава на този компютър.{% if row and row.passport_scan %} <a href="{{ url_for('candidate_scan', cid=row.id) }}" target="_blank" title="Отваря записания скан в нов раздел">Отвори записания скан</a>{% endif %}</p>
+  </div>
+  <div class="form-actions"><button class="btn primary" title="Записва всички полета на работника">Запиши работника</button></div>
 </form>
 
 {% if row %}
-<h2>Случаи на кандидата</h2>
+<div id="attachments">{{ attachments(attach_groups, files, 'worker', row.id) }}</div>
+<h2>Случаи на работника</h2>
 {% if cases %}
 <table class="list"><thead><tr><th>Вид случай (отваря случая)</th><th>Работодател</th><th>Създаден</th><th>Действие</th></tr></thead><tbody>
 {% for c in cases %}<tr><td><a href="{{ url_for('case_view', case_id=c.id) }}">{{ c.ctype }}</a></td><td>{{ c.employer }}</td><td class="muted">{{ c.created_at[:10]|bgdate }}</td>
-<td><a href="{{ url_for('case_edit', copy=c.id, candidate_id=row.id) }}" title="Създава нов случай за същия кандидат с копие на условията (напр. за удължаване). Старият случай не се променя.">Копирай като нов случай</a></td></tr>{% endfor %}
+<td><a href="{{ url_for('case_edit', copy=c.id, candidate_id=row.id) }}" title="Създава нов случай за същия работник с копие на условията (напр. за удължаване). Старият случай не се променя.">Копирай като нов случай</a></td></tr>{% endfor %}
 </tbody></table>
-{% else %}<p class="empty">Кандидатът още няма случай. Натиснете „+ Нов случай за кандидата“ горе.</p>{% endif %}
+{% else %}<p class="empty">Работникът още няма случай. Натиснете „+ Нов случай за работника“ горе.</p>{% endif %}
 {% endif %}
 {% endblock %}
 
@@ -53,7 +81,7 @@
 (function () {
   const out = document.getElementById('mrz-result');
   const labels = {name_lat: 'Латиница', passport_no: 'Паспорт №', gender: 'Пол', birth_date: 'Роден',
-                  passport_expiry: 'Валиден до', citizenship_id: 'Гражданство', passport_issued_by: 'Издаден от'};
+                  passport_expiry: 'Валидност', citizenship_id: 'Страна на произход', passport_issued_by: 'Издаден от'};
   function show(msg, cls) { out.className = 'mrz-out ' + (cls || ''); out.textContent = msg; }
   function apply(data) {
     const filled = [], changed = [];
@@ -72,7 +100,7 @@
     if (changed.length) msg += ' Променени: ' + changed.join('; ') + '.';
     if (data.warnings.length) msg += ' ' + data.warnings.join(' ');
     if (!data.fields.citizenship_id && data.nationality) msg += ' Гражданство „' + data.nationality + '“ не е в списъка с държави.';
-    msg += ' Проверете жълтите полета и натиснете „Запиши кандидата“ най-долу.';
+    msg += ' Проверете жълтите полета и натиснете „Запиши работника“ най-долу.';
     show(msg, clean ? 'ok' : 'warn');
   }
   let latest = 0;  // only the newest request may change the form
@@ -95,6 +123,19 @@
   document.getElementById('mrz-toggle').addEventListener('click', () => {
     const b = document.getElementById('mrz-text-box'); b.hidden = !b.hidden;
   });
+  // Address and position lists show only the chosen employer's entries.
+  const emp = document.getElementById('f-employer_id');
+  function filterByEmployer() {
+    ['f-workplace_address', 'f-position_id'].forEach(function (id) {
+      const sel = document.getElementById(id);
+      sel.querySelectorAll('option[data-emp]').forEach(function (o) {
+        const show = o.dataset.emp === emp.value;
+        o.hidden = !show; o.disabled = !show;
+        if (!show && o.selected) sel.value = '';
+      });
+    });
+  }
+  emp.addEventListener('change', filterByEmployer); filterByEmployer();
   document.getElementById('mrz-parse').addEventListener('click', () => {
     const fd = new FormData(); fd.append('mrz_text', document.getElementById('mrz-text').value); send(fd);
   });

@@ -12,6 +12,12 @@ def _id_from(resp):
     return int(re.search(r"/(\d+)(?:/edit)?$", resp.headers["Location"]).group(1))
 
 
+def _employer(name, **extra):
+    """The six fields the задание makes required for an employer."""
+    return {"name": name, "eik": "200000099", "address": "гр. София", "rep_name": "Иван Иванов Иванов",
+            "phone": "+359111", "email": "x@example.bg", **extra}
+
+
 def _setup_case(client, app):
     r = client.post("/employers/new", data={
         "name": "ТЕСТ ЕООД", "eik": "200 000 001", "address": "гр. София, ул. Тестова 1",
@@ -35,8 +41,9 @@ def _setup_case(client, app):
     r = client.post("/candidates/new", data={
         "name_cyr": "Тестова Анна", "name_lat": "Testova Anna", "gender": "F", "birth_date": "05.06.1990",
         "birth_place": "Tashkent", "citizenship_id": str(uzb), "birth_country_id": str(uzb),
-        "passport_no": "XX1234567", "passport_issue_date": "01.02.2020", "passport_expiry": "31.01.2030"})
-    assert r.status_code == 302
+        "passport_no": "XX1234567", "passport_issue_date": "01.02.2020", "passport_expiry": "31.01.2030",
+        "employer_id": str(eid), "position_id": str(pid)})
+    assert r.status_code == 302, r.data.decode()[:500]
     cid = _id_from(r)
     r = client.post("/cases/new", data={
         "candidate_id": cid, "employer_id": eid, "position_id": pid, "case_type_id": ctype,
@@ -66,7 +73,7 @@ def test_invalid_input_shows_errors_and_keeps_values(client):
 
 def test_case_position_must_belong_to_employer(client, app):
     eid, pid, cid, case_id = _setup_case(client, app)
-    r = client.post("/employers/new", data={"name": "ДРУГА ООД"})
+    r = client.post("/employers/new", data=_employer("ДРУГА ООД"))
     other = _id_from(r)
     conn = connect(Path(app.config["DATABASE"]))
     ctype = conn.execute("SELECT id FROM case_type LIMIT 1").fetchone()[0]
@@ -77,8 +84,8 @@ def test_case_position_must_belong_to_employer(client, app):
 
 
 def test_duplicate_employer_is_friendly(client):
-    client.post("/employers/new", data={"name": "ЕДНО ООД"})
-    r = client.post("/employers/new", data={"name": "ЕДНО ООД"}, follow_redirects=True)
+    client.post("/employers/new", data=_employer("ЕДНО ООД"))
+    r = client.post("/employers/new", data=_employer("ЕДНО ООД"), follow_redirects=True)
     assert "Вече има работодател с това име" in r.data.decode()
 
 

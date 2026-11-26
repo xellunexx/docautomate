@@ -1,20 +1,34 @@
 {% extends 'base.html' %}
-{% block title %}Работодатели{% endblock %}
+{% block title %}База Работодатели{% endblock %}
 {% block body %}
-<div class="head-row"><h1>Работодатели</h1><a class="btn primary" href="{{ url_for('employer') }}" title="Отваря празен формуляр за нова фирма">+ Нов работодател</a></div>
-<p class="intro">Фирмите, при които работят кандидатите. Данните им се въвеждат веднъж и влизат във всички документи. „непълен“ значи, че липсва ЕИК, адрес или представляващ.</p>
+<div class="head-row">
+  <h1>База Работодатели</h1>
+  <form class="search" method="get" role="search">
+    <input name="q" value="{{ q }}" placeholder="Име, ЕИК, МОЛ или №" aria-label="Търси работодател по име, ЕИК, МОЛ или номер">
+    <button class="btn" title="Показва само работодателите, които съдържат този текст">Търси</button>
+    {% if q %}<a class="btn link" href="{{ url_for('employers') }}" title="Показва всички работодатели">Изчисти</a>{% endif %}
+  </form>
+  <a class="btn primary" href="{{ url_for('employer') }}" title="Отваря празен профил за нов работодател">+ Нов работодател</a>
+</div>
+<p class="intro">Всеки ред отваря профила на работодателя за преглед и редакция. „непълен“ значи, че липсва някое от шестте задължителни полета.</p>
 {% if rows %}
+<div class="table-wrap">
 <table class="list">
-  <thead><tr><th>Фирма (отваря работодателя)</th><th>ЕИК</th><th>Представляващ</th><th class="num" title="Брой длъжности при фирмата">Длъжности</th><th class="num" title="Брой случаи при фирмата">Случаи</th></tr></thead>
+  <thead><tr><th class="num">№</th><th>Име</th><th>ЕИК</th><th>Седалище</th><th>МОЛ</th><th>Телефон</th><th>Имейл</th>
+    <th class="num" title="Адреси на месторабота">Адреси</th><th class="num" title="Брой работници при фирмата">Работници</th></tr></thead>
   <tbody>
   {% for r in rows %}
-  <tr>
-    <td><a href="{{ url_for('employer', eid=r.id) }}" title="Отваря фирмата: данни и длъжности">{{ r.name }}</a>
-      {% if not r.eik or not r.address or not r.rep_name %}<span class="tag warn" title="Липсва ЕИК, адрес или представляващ. В документите те ще излязат като празни редове.">непълен</span>{% endif %}</td>
-    <td>{{ r.eik }}</td><td>{{ r.rep_name }}</td><td class="num">{{ r.npos }}</td><td class="num">{{ r.ncases }}</td>
+  <tr class="row-link" data-href="{{ url_for('employer', eid=r.id) }}">
+    <td class="num muted">{{ r.ref_no }}</td>
+    <td><a href="{{ url_for('employer', eid=r.id) }}" title="Отваря профила на работодателя">{{ r.name }}</a>
+      {% if r.id in incomplete %}<span class="tag warn" title="Липсва задължително поле. Отворете профила, за да го попълните.">непълен</span>{% endif %}</td>
+    <td>{{ r.eik }}</td><td>{{ r.address|truncate(40) }}</td><td>{{ r.rep_name }}</td><td>{{ r.phone }}</td><td>{{ r.email }}</td>
+    <td class="num">{{ r.naddr }}</td><td class="num">{{ r.nworkers }}</td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
-{% else %}<p class="empty">Още няма работодатели. Натиснете „+ Нов работодател“.</p>{% endif %}
+</div>
+{% else %}<p class="empty">{{ 'Няма работодател с „' ~ q ~ '“.' if q else 'Още няма работодатели. Натиснете „+ Нов работодател“.' }}</p>{% endif %}
 {% endblock %}
+{% block scripts %}{% include '_rowlink.html' %}{% endblock %}

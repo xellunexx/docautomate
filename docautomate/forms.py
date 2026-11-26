@@ -1,8 +1,10 @@
 """Form field definitions shared by the HTML forms and the save handlers."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
+from .db import VISA_TYPES
 from .grammar import parse_date
 
 
@@ -20,20 +22,27 @@ class F:
 GENDER = (("", "—"), ("M", "мъж"), ("F", "жена"))
 
 CANDIDATE = [
-    F("name_cyr", "Имена на кирилица", required=True, help="Както ще се изписват в документите"),
-    F("name_lat", "Имена на латиница (по паспорт)"),
-    F("gender", "Пол", "gender", help="Нужен за роден/родена, г-н/г-жа"),
-    F("birth_date", "Дата на раждане", "date"),
-    F("birth_place", "Място на раждане", help="Както е в паспорта, напр. Tashkent Region"),
+    # задание, раздел 02: задължителни при създаване
+    F("name_lat", "Име на латиница (по паспорт)", required=True),
+    F("name_cyr", "Име на кирилица", required=True, help="Както ще се изписва в документите"),
+    F("birth_date", "Дата на раждане", "date", required=True),
+    F("passport_no", "Номер на паспорт", required=True),
+    F("citizenship_id", "Страна на произход", "country", required=True),
+    F("birth_place", "Място на раждане", required=True, help="Както е в паспорта, напр. Tashkent Region"),
+    F("passport_issue_date", "Дата на издаване на паспорта", "date", required=True),
+    F("passport_expiry", "Валидност на паспорта", "date", required=True),
+    # незадължителни
+    F("residence_address", "Адрес на местоживеене", wide=True,
+      help="Влиза в декларацията за жилище"),
+    F("lnch", "Номер ЛНЧ", help="Попълва се при наличност"),
+    F("visa_type", "Тип виза", "select", options=(("", "—"),) + tuple((v, v) for v in VISA_TYPES),
+      help="Избира кои бланки се генерират. Нужен е при генериране"),
+    F("contact", "Контакт"),
+    F("gender", "Пол", "gender", help="Нужен за роден/родена, г-н/г-жа в документите"),
     F("birth_country_id", "Държава на раждане", "country"),
-    F("citizenship_id", "Гражданство", "country"),
-    F("passport_no", "Паспорт №"),
-    F("passport_issue_date", "Паспорт – издаден на", "date"),
-    F("passport_expiry", "Паспорт – валиден до", "date"),
-    F("passport_issued_by", "Паспорт – издаден от", help="Празно = държавата на гражданство"),
+    F("passport_issued_by", "Паспорт – издаден от", help="Празно = страната на произход"),
     F("phone", "Телефон", help="Заявление: „contact phone“"),
-    F("lnch", "ЛНЧ", help="Празно при първо подаване; попълва се при удължаване"),
-    F("address_bg", "Адрес в България", wide=True),
+    F("address_bg", "Адрес в България (за заявлението)", wide=True),
     F("marital_status", "Семейно положение"),
     F("education", "Образование"),
     F("specialty", "Специалност"),
@@ -43,15 +52,17 @@ CANDIDATE = [
 ]
 
 EMPLOYER = [
-    F("name", "Фирма (с правната форма, напр. ЕООД)", required=True, wide=True),
-    F("eik", "ЕИК", help="Само цифри; интервалите се махат автоматично"),
-    F("address", "Седалище и адрес на управление", wide=True),
-    F("rep_name", "Представляващ – три имена"),
-    F("rep_role", "Представляващ – длъжност", help="напр. управител"),
-    F("rep_gender", "Представляващ – пол", "gender"),
-    F("rep_egn", "Представляващ – ЕГН", help="Обосновка и Декларация"),
-    F("phone", "Телефон"),
-    F("email", "Е-поща", "email"),
+    # задание, раздел 01: шестте задължителни полета
+    F("name", "Име (с правната форма, напр. ЕООД)", required=True, wide=True),
+    F("eik", "ЕИК", required=True, help="Само цифри; интервалите се махат автоматично"),
+    F("address", "Седалище", required=True, wide=True),
+    F("rep_name", "МОЛ – три имена", required=True, help="Материалноотговорното лице. Подписва документите"),
+    F("phone", "Телефон за контакт", required=True),
+    F("email", "Имейл за контакт", "email", required=True),
+    # незадължителни
+    F("rep_egn", "ЕГН на МОЛ", help="Обосновка и декларации"),
+    F("rep_role", "Длъжност на МОЛ", help="напр. управител"),
+    F("rep_gender", "Пол на МОЛ", "gender"),
     F("notes", "Бележки", "textarea", wide=True, help="Само за вашата справка, не влиза в документите"),
 ]
 
@@ -173,6 +184,14 @@ def parse_form(fields: list[F], form) -> dict:
                 out[f.name] = int(raw) if raw else None
             elif f.kind == "bool":
                 out[f.name] = 1 if raw in ("1", "on", "true", "yes") else 0
+            elif f.kind == "select":
+                if raw not in {v for v, _ in f.options}:
+                    raise ValueError("невалиден избор")
+                out[f.name] = raw
+            elif f.kind == "email":
+                if raw and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", raw):
+                    raise ValueError("невалиден имейл")
+                out[f.name] = raw
             elif f.kind == "gender":
                 if raw not in ("", "M", "F"):
                     raise ValueError("невалиден пол")

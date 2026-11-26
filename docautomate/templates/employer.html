@@ -1,28 +1,66 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import field, error_box %}
+{% from '_macros.html' import field, error_box, attachments %}
 {% block title %}{{ row.name if row else 'Нов работодател' }}{% endblock %}
 {% block body %}
-<p class="crumbs"><a href="{{ url_for('employers') }}">Работодатели</a> /</p>
+<p class="crumbs"><a href="{{ url_for('employers') }}">База Работодатели</a> /</p>
 <div class="head-row">
-  <h1>{{ row.name if row else 'Нов работодател' }}</h1>
-  {% if row %}<a class="btn primary" href="{{ url_for('case_edit', employer_id=row.id) }}" title="Отваря нов случай с тази фирма вече избрана">+ Нов случай при фирмата</a>{% endif %}
+  <h1>{{ row.name if row else 'Нов работодател' }}{% if row %} <span class="ref" title="Уникален номер на записа. Постоянен, не се променя.">№ {{ row.ref_no }}</span>{% endif %}</h1>
+  {% if row %}<a class="btn primary" href="{{ url_for('candidate', employer_id=row.id) }}" title="Отваря нов работник с тази фирма вече избрана">+ Нов работник при фирмата</a>{% endif %}
 </div>
-<p class="intro">Въвежда се веднъж. Данните влизат във всички документи на всички кандидати при тази фирма. Вече генерираните PDF не се променят.</p>
+<p class="intro">{{ 'Промените влизат във всички документи, генерирани след запис.' if row else 'Профилът се създава, когато са попълнени шестте задължителни полета (със звездичка).' }}</p>
 {{ error_box(errors) }}
 <form method="post" class="grid-form">
   {% for f in fields %}{{ field(f, values, errors) }}{% endfor %}
-  <div class="form-actions"><button class="btn primary" title="Записва данните на фирмата">Запиши работодателя</button></div>
+  <div class="field wide" id="addr-field">
+    <label>Адреси на месторабота</label>
+    <div id="addr-list">
+      {% for a in (addresses or ['']) %}<div class="addr-row"><input name="addresses" value="{{ a }}" aria-label="Адрес на месторабота">
+        <button type="button" class="btn link danger addr-del" title="Маха този адрес от списъка (след запис)">махни</button></div>{% endfor %}
+    </div>
+    <button type="button" class="btn" id="addr-add" title="Добавя още един ред за адрес на месторабота">+ Още адрес</button>
+    <p class="help">По желание. При работника се избира един от тези адреси.</p>
+  </div>
+  <div class="form-actions"><button class="btn primary" title="Записва данните на фирмата и адресите">Запиши работодателя</button></div>
 </form>
 {% if row %}
+<div id="attachments">{{ attachments(attach_groups, files, 'employer', row.id) }}</div>
+
+<div class="head-row"><h2>Работници при фирмата ({{ workers|length }})</h2></div>
+{% if workers %}
+<table class="list"><thead><tr><th class="num">№</th><th>Име на кирилица</th><th>Име на латиница</th><th>Тип виза</th></tr></thead><tbody>
+{% for w in workers %}<tr class="row-link" data-href="{{ url_for('candidate', cid=w.id) }}"><td class="num muted">{{ w.ref_no }}</td>
+<td><a href="{{ url_for('candidate', cid=w.id) }}" title="Отваря профила на работника">{{ w.name_cyr or '(без име)' }}</a></td><td>{{ w.name_lat }}</td><td>{{ w.visa_type }}</td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">Още няма работници при тази фирма.</p>{% endif %}
+
 <div class="head-row"><h2>Длъжности при фирмата</h2><a class="btn" href="{{ url_for('position', eid=row.id) }}" title="Отваря празен формуляр за нова длъжност при тази фирма">+ Нова длъжност</a></div>
-<p class="help">Всяка длъжност пази код по НКПД, място на работа, текста на обосновката и длъжностната характеристика. Пише се веднъж и се ползва за всички кандидати на тази длъжност.</p>
+<p class="help">Всяка длъжност пази код по НКПД, текста на обосновката и длъжностната характеристика. Нова длъжност може да се добави и направо от профила на работника.</p>
 {% if positions %}
-<table class="list"><thead><tr><th>Длъжност (отваря длъжността)</th><th>НКПД</th><th>Място на работа</th><th>Попълнени текстове</th></tr></thead><tbody>
+<table class="list"><thead><tr><th>Длъжност (отваря длъжността)</th><th>НКПД</th><th>Попълнени текстове</th></tr></thead><tbody>
 {% for p in positions %}
-<tr><td><a href="{{ url_for('position', pid=p.id) }}" title="Отваря длъжността за редакция">{{ p.title }}</a></td><td>{{ p.nkpd }}</td><td>{{ p.workplace|truncate(70) }}</td>
+<tr><td><a href="{{ url_for('position', pid=p.id) }}" title="Отваря длъжността за редакция">{{ p.title }}</a></td><td>{{ p.nkpd }}</td>
 <td>{% if p.obosnovka %}<span class="tag" title="Текстът на обосновката е попълнен">обосновка ✓</span>{% else %}<span class="tag warn" title="Обосновката ще излезе празна">без обосновка</span>{% endif %}
 {% if p.dh_duties %}<span class="tag" title="Длъжностната характеристика е попълнена">ДХ ✓</span>{% else %}<span class="tag warn" title="Длъжностната характеристика ще излезе празна">без ДХ</span>{% endif %}</td></tr>
 {% endfor %}</tbody></table>
-{% else %}<p class="empty">Фирмата още няма длъжности. Натиснете „+ Нова длъжност“.</p>{% endif %}
+{% else %}<p class="empty">Фирмата още няма длъжности.</p>{% endif %}
 {% endif %}
+{% endblock %}
+{% block scripts %}
+{% include '_rowlink.html' %}
+<script>
+(function () {
+  const list = document.getElementById('addr-list');
+  function wire(row) {
+    row.querySelector('.addr-del').addEventListener('click', function () {
+      if (list.children.length > 1) row.remove(); else row.querySelector('input').value = '';
+    });
+  }
+  list.querySelectorAll('.addr-row').forEach(wire);
+  document.getElementById('addr-add').addEventListener('click', function () {
+    const row = list.firstElementChild.cloneNode(true);
+    row.querySelector('input').value = '';
+    list.appendChild(row); wire(row); row.querySelector('input').focus();
+  });
+})();
+</script>
 {% endblock %}

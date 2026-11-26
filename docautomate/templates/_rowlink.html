@@ -1,0 +1,9 @@
+<script>
+// A click anywhere on a table row opens the record, like in Airtable. Links and buttons inside keep working.
+document.querySelectorAll('tr.row-link').forEach(function (tr) {
+  tr.addEventListener('click', function (e) {
+    if (e.target.closest('a, button, input, select, label')) return;
+    window.location = tr.dataset.href;
+  });
+});
+</script>

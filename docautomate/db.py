@@ -202,6 +202,95 @@ def close_db(_exc=None):
         db.close()
 
 
+VISA_TYPES = ("1 година", "3 години", "3 месеца", "Удължаване")
+
+# The seven attachment fields of a worker (задание, раздел 02) and the employer's one.
+WORKER_ATTACHMENTS = (
+    ("passport", "Паспорт и свидетелство за съдимост"),
+    ("documents", "Документи"),
+    ("nap", "НАП"),
+    ("visa_interview", "Документи интервю виза"),
+    ("permit", "Разрешение Миграция"),
+    ("insurance", "Медицинска застраховка"),
+    ("invitation", "Invitation Letter"),
+)
+EMPLOYER_ATTACHMENTS = (("company", "Фирмени документи"),)
+
+# Unique record numbers start here and never go back, even after a delete.
+REF_START = {"worker": 1001, "employer": 101}
+
+STAGE1_SCHEMA = """
+CREATE TABLE IF NOT EXISTS employer_address (
+    id INTEGER PRIMARY KEY,
+    employer_id INTEGER NOT NULL REFERENCES employer(id) ON DELETE CASCADE,
+    address TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS ix_employer_address_employer ON employer_address(employer_id);
+
+CREATE TABLE IF NOT EXISTS attachment (
+    id INTEGER PRIMARY KEY,
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('worker', 'employer')),
+    owner_id INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    stored_name TEXT NOT NULL UNIQUE,      -- under data/attachments/
+    original_name TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS ix_attachment_owner ON attachment(owner_type, owner_id);
+
+CREATE TABLE IF NOT EXISTS ref_counter (
+    kind TEXT PRIMARY KEY,
+    last_value INTEGER NOT NULL
+);
+"""
+
+# Columns added after v1. ALTER TABLE keeps existing databases and their data.
+_ADDED_COLUMNS = {
+    "candidate": [
+        ("ref_no", "INTEGER"),
+        ("employer_id", "INTEGER REFERENCES employer(id) ON DELETE RESTRICT"),
+        ("position_id", "INTEGER REFERENCES position(id) ON DELETE SET NULL"),
+        ("workplace_address", "TEXT NOT NULL DEFAULT ''"),
+        ("residence_address", "TEXT NOT NULL DEFAULT ''"),
+        ("visa_type", "TEXT NOT NULL DEFAULT ''"),
+        ("contact", "TEXT NOT NULL DEFAULT ''"),
+    ],
+    "employer": [
+        ("ref_no", "INTEGER"),
+    ],
+}
+
+
+def next_ref(conn: sqlite3.Connection, kind: str) -> int:
+    """Next permanent record number for 'worker' or 'employer'. Never reused."""
+    table = "candidate" if kind == "worker" else "employer"
+    conn.execute("INSERT OR IGNORE INTO ref_counter (kind, last_value) VALUES (?,?)", (kind, REF_START[kind] - 1))
+    conn.execute(f"UPDATE ref_counter SET last_value=max(last_value, coalesce((SELECT max(ref_no) FROM {table}), 0))"
+                 " + 1 WHERE kind=?", (kind,))
+    return conn.execute("SELECT last_value FROM ref_counter WHERE kind=?", (kind,)).fetchone()[0]
+
+
+# Any insert path (forms, Airtable import, tests) gets its number from the same counter.
+_REF_TRIGGERS = """
+CREATE TRIGGER IF NOT EXISTS trg_{table}_ref AFTER INSERT ON {table} WHEN NEW.ref_no IS NULL BEGIN
+    INSERT OR IGNORE INTO ref_counter (kind, last_value) VALUES ('{kind}', {start});
+    UPDATE ref_counter SET last_value=max(last_value, coalesce((SELECT max(ref_no) FROM {table}), 0)) + 1
+        WHERE kind='{kind}';
+    UPDATE {table} SET ref_no=(SELECT last_value FROM ref_counter WHERE kind='{kind}') WHERE id=NEW.id;
+END;
+"""
+
+
+def _visa_type_for(case_type_name: str, residence_period: str, is_extension: int) -> str:
+    if is_extension:
+        return "Удължаване"
+    for v in VISA_TYPES:
+        if v in (residence_period or "") or v in (case_type_name or ""):
+            return v
+    return ""
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
     """Bring databases created by older versions up to the current schema."""
     cols = {r[1] for r in conn.execute("PRAGMA table_info(doc_template)")}
@@ -209,6 +298,43 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE doc_template ADD COLUMN master_key TEXT")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_doc_template_master_key ON doc_template(master_key)")
         # existing master rows get their key in app.install_masters (matched by file or name)
+
+    conn.executescript(STAGE1_SCHEMA)
+    added = set()
+    for table, columns in _ADDED_COLUMNS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, decl in columns:
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+                added.add((table, name))
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_candidate_ref ON candidate(ref_no)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_employer_ref ON employer(ref_no)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_candidate_employer ON candidate(employer_id)")
+
+    # Every record gets its permanent number, in the order it was created.
+    for kind, table in (("employer", "employer"), ("worker", "candidate")):
+        for (rid,) in conn.execute(f"SELECT id FROM {table} WHERE ref_no IS NULL ORDER BY id").fetchall():
+            conn.execute(f"UPDATE {table} SET ref_no=? WHERE id=?", (next_ref(conn, kind), rid))
+        conn.executescript(_REF_TRIGGERS.format(table=table, kind=kind, start=REF_START[kind] - 1))
+
+    if ("candidate", "employer_id") in added:
+        # Before, employer, position and case type lived only on the case. Copy them from each
+        # worker's newest case so nothing has to be re-entered.
+        for r in conn.execute(
+                'SELECT c.candidate_id, c.employer_id, c.position_id, ct.name, ct.residence_period, ct.is_extension'
+                ' FROM "case" c JOIN case_type ct ON ct.id=c.case_type_id'
+                ' WHERE c.id IN (SELECT max(id) FROM "case" GROUP BY candidate_id)').fetchall():
+            conn.execute("UPDATE candidate SET employer_id=?, position_id=?, visa_type=? WHERE id=?",
+                         (r[1], r[2], _visa_type_for(r[3], r[4], r[5]), r[0]))
+        # Work addresses: one per distinct position workplace, so the new dropdown is not empty.
+        for eid, addr in conn.execute(
+                "SELECT DISTINCT employer_id, trim(workplace) FROM position WHERE trim(workplace)<>''").fetchall():
+            if not conn.execute("SELECT 1 FROM employer_address WHERE employer_id=? AND address=?",
+                                (eid, addr)).fetchone():
+                conn.execute("INSERT INTO employer_address (employer_id, address) VALUES (?,?)", (eid, addr))
+        conn.execute(
+            "UPDATE candidate SET workplace_address=coalesce((SELECT trim(p.workplace) FROM position p"
+            " WHERE p.id=candidate.position_id), '') WHERE position_id IS NOT NULL AND workplace_address=''")
 
 
 def init_db(conn: sqlite3.Connection) -> None:

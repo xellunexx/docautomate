@@ -32,7 +32,7 @@ def default_data_dir() -> Path:
 def create_app(data_dir: Path | None = None, testing: bool = False) -> Flask:
     app = Flask(__name__)
     data_dir = Path(data_dir or default_data_dir())
-    for sub in ("templates", "generated", "scans"):
+    for sub in ("templates", "generated", "scans", "attachments"):
         (data_dir / sub).mkdir(parents=True, exist_ok=True)
     app.config.update(
         DATA_DIR=str(data_dir),
@@ -164,7 +164,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
 
     @app.context_processor
     def _globals():
-        return {"GENDER": dict(forms.GENDER), "now": datetime.now()}
+        return {"GENDER": dict(forms.GENDER), "now": datetime.now(), "VISA_TYPES": dbm.VISA_TYPES}
 
     @app.template_filter("bgdate")
     def _bgdate(v):
@@ -192,26 +192,67 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
     # ------------------------------------------------------------ candidates
     @app.get("/candidates")
     def candidates():
+        """База Работници: table with search, filters (employer, country, visa type) and grouping."""
+        d = get_db()
         q = request.args.get("q", "").strip()
-        sql = ("SELECT ca.*, co.name AS citizenship FROM candidate ca"
-               " LEFT JOIN country co ON co.id=ca.citizenship_id")
-        args = []
+        f_emp = request.args.get("employer", type=int)
+        f_country = request.args.get("country", type=int)
+        f_visa = request.args.get("visa", "").strip()
+        group = request.args.get("group") == "employer"
+        sql = ("SELECT ca.*, co.name AS citizenship, e.name AS employer, p.title AS position FROM candidate ca"
+               " LEFT JOIN country co ON co.id=ca.citizenship_id LEFT JOIN employer e ON e.id=ca.employer_id"
+               " LEFT JOIN position p ON p.id=ca.position_id")
+        where, args = [], []
         if q:
-            sql += (" WHERE ca.name_cyr LIKE ? OR ca.name_lat LIKE ? OR ca.passport_no LIKE ?"
-                    " OR ca.phone LIKE ?")
-            args = [f"%{q}%"] * 4
-        sql += " ORDER BY ca.updated_at DESC LIMIT 500"
-        return render_template("candidates.html", rows=get_db().execute(sql, args).fetchall(), q=q)
+            where.append("(ca.name_cyr LIKE ? OR ca.name_lat LIKE ? OR ca.passport_no LIKE ? OR ca.phone LIKE ?"
+                         " OR CAST(ca.ref_no AS TEXT)=?)")
+            args += [f"%{q}%"] * 4 + [q]
+        if f_emp:
+            where.append("ca.employer_id=?")
+            args.append(f_emp)
+        if f_country:
+            where.append("ca.citizenship_id=?")
+            args.append(f_country)
+        if f_visa == "-":
+            where.append("ca.visa_type=''")
+        elif f_visa:
+            where.append("ca.visa_type=?")
+            args.append(f_visa)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY e.name IS NULL, e.name, ca.name_cyr" if group else " ORDER BY ca.updated_at DESC"
+        rows = d.execute(sql + " LIMIT 1000", args).fetchall()
+        groups = []
+        if group:
+            for r in rows:
+                key = r["employer"] or "Без работодател"
+                if not groups or groups[-1][0] != key:
+                    groups.append((key, []))
+                groups[-1][1].append(r)
+        return render_template(
+            "candidates.html", rows=rows, groups=groups, q=q, group=group,
+            f_emp=f_emp, f_country=f_country, f_visa=f_visa,
+            employers=d.execute("SELECT id, name FROM employer ORDER BY name").fetchall(),
+            countries=d.execute("SELECT DISTINCT co.id, co.name FROM candidate ca JOIN country co"
+                                " ON co.id=ca.citizenship_id ORDER BY co.name").fetchall())
 
     @app.route("/candidates/new", methods=["GET", "POST"])
     @app.route("/candidates/<int:cid>", methods=["GET", "POST"])
     def candidate(cid=None):
+        d = get_db()
         row = _one("SELECT * FROM candidate WHERE id=?", cid) if cid else None
-        values = dict(row) if row else {}
+        values = dict(row) if row else {"employer_id": request.args.get("employer_id", type=int)}
         errors = {}
         if request.method == "POST":
             try:
-                data = forms.parse_form(forms.CANDIDATE, request.form)
+                data, errs = {}, {}
+                try:
+                    data = forms.parse_form(forms.CANDIDATE, request.form)
+                except forms.FormError as exc:
+                    errs.update(exc.errors)
+                data.update(_worker_links(request.form, errs))
+                if errs:
+                    raise forms.FormError(errs)
                 if row:
                     _update("candidate", cid, data)
                 else:
@@ -219,18 +260,62 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                 scan = request.files.get("passport_scan")
                 if scan and scan.filename:
                     _save_scan(cid, scan)
-                flash("Кандидатът е записан.", "ok")
+                flash("Работникът е записан.", "ok")
                 return redirect(url_for("candidate", cid=cid))
             except forms.FormError as exc:
                 errors = exc.errors
                 values = {**values, **request.form.to_dict()}
-        cases = get_db().execute(
+        cases = d.execute(
             'SELECT c.*, e.name AS employer, ct.name AS ctype FROM "case" c JOIN employer e ON e.id=c.employer_id'
             " JOIN case_type ct ON ct.id=c.case_type_id WHERE c.candidate_id=? ORDER BY c.created_at DESC",
             (cid or 0,)).fetchall()
         return render_template("candidate.html", row=row, values=values, errors=errors,
                                fields=forms.CANDIDATE, countries=_countries(), cases=cases,
-                               ocr=mrz.ocr_available())
+                               ocr=mrz.ocr_available(), attach_groups=dbm.WORKER_ATTACHMENTS,
+                               files=_attachments("worker", cid) if cid else {}, **_worker_choices())
+
+    def _worker_choices():
+        d = get_db()
+        return {
+            "employers": d.execute("SELECT id, name FROM employer ORDER BY name").fetchall(),
+            "positions": d.execute("SELECT id, employer_id, title, nkpd FROM position ORDER BY title").fetchall(),
+            "addresses": d.execute("SELECT id, employer_id, address FROM employer_address"
+                                   " ORDER BY employer_id, sort_order, id").fetchall(),
+        }
+
+    def _worker_links(form, errs) -> dict:
+        """Employer (required, must exist), position (employer's list or typed new), work address."""
+        d = get_db()
+        out = {"employer_id": None, "position_id": None, "workplace_address": ""}
+        raw = form.get("employer_id", "").strip()
+        emp = d.execute("SELECT id FROM employer WHERE id=?", (int(raw),)).fetchone() if raw.isdigit() else None
+        if not emp:
+            errs["employer_id"] = "Работодател: изберете работодател от списъка"
+            return out
+        eid = out["employer_id"] = emp["id"]
+        new_title = re.sub(r"\s+", " ", form.get("position_new", "")).strip()
+        praw = form.get("position_id", "").strip()
+        if new_title:
+            # SQLite lower() knows only Latin letters, so compare in Python (Готвач = готвач)
+            p = next((r for r in d.execute("SELECT id, title FROM position WHERE employer_id=?", (eid,))
+                      if r["title"].casefold() == new_title.casefold()), None)
+            if p:
+                out["position_id"] = p["id"]
+            elif not errs:  # create the new position only when the whole form is valid
+                out["position_id"] = _insert("position", {"employer_id": eid, "title": new_title})
+        elif praw.isdigit():
+            p = d.execute("SELECT id, employer_id FROM position WHERE id=?", (int(praw),)).fetchone()
+            if not p or p["employer_id"] != eid:
+                errs["position_id"] = "Длъжност: не е на избрания работодател"
+            else:
+                out["position_id"] = p["id"]
+        addr = form.get("workplace_address", "").strip()
+        if addr:
+            if not d.execute("SELECT 1 FROM employer_address WHERE employer_id=? AND address=?",
+                             (eid, addr)).fetchone():
+                errs["workplace_address"] = "Адрес на месторабота: не е от адресите на избрания работодател"
+            out["workplace_address"] = addr
+        return out
 
     def _save_scan(cid, upload):
         ext = Path(upload.filename).suffix.lower()
@@ -286,18 +371,33 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
     # ------------------------------------------------------------ employers & positions
     @app.get("/employers")
     def employers():
-        rows = get_db().execute(
-            "SELECT e.*, (SELECT count(*) FROM position p WHERE p.employer_id=e.id) AS npos,"
-            ' (SELECT count(*) FROM "case" c WHERE c.employer_id=e.id) AS ncases'
-            " FROM employer e ORDER BY e.name").fetchall()
-        return render_template("employers.html", rows=rows)
+        q = request.args.get("q", "").strip()
+        sql = ("SELECT e.*, (SELECT count(*) FROM position p WHERE p.employer_id=e.id) AS npos,"
+               " (SELECT count(*) FROM candidate ca WHERE ca.employer_id=e.id) AS nworkers,"
+               " (SELECT count(*) FROM employer_address a WHERE a.employer_id=e.id) AS naddr FROM employer e")
+        args = []
+        if q:
+            sql += " WHERE e.name LIKE ? OR e.eik LIKE ? OR e.rep_name LIKE ? OR CAST(e.ref_no AS TEXT)=?"
+            args = [f"%{q}%"] * 3 + [q]
+        rows = get_db().execute(sql + " ORDER BY e.name", args).fetchall()
+        required = [f.name for f in forms.EMPLOYER if f.required]
+        incomplete = {r["id"] for r in rows if not all((r[k] or "").strip() for k in required)}
+        return render_template("employers.html", rows=rows, q=q, incomplete=incomplete)
 
     @app.route("/employers/new", methods=["GET", "POST"])
     @app.route("/employers/<int:eid>", methods=["GET", "POST"])
     def employer(eid=None):
+        d = get_db()
         row = _one("SELECT * FROM employer WHERE id=?", eid) if eid else None
         values, errors = (dict(row) if row else {"rep_role": "управител"}), {}
+        addresses = [r["address"] for r in d.execute(
+            "SELECT address FROM employer_address WHERE employer_id=? ORDER BY sort_order, id", (eid or 0,))]
         if request.method == "POST":
+            new_addresses = []
+            for a in request.form.getlist("addresses"):
+                a = re.sub(r"\s+", " ", a).strip()
+                if a and a not in new_addresses:
+                    new_addresses.append(a)
             try:
                 data = forms.parse_form(forms.EMPLOYER, request.form)
                 data["eik"] = re.sub(r"\s+", "", data["eik"])
@@ -305,14 +405,78 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                     _update("employer", eid, data)
                 else:
                     eid = _insert("employer", data)
+                _save_addresses(eid, new_addresses)
                 flash("Работодателят е записан.", "ok")
                 return redirect(url_for("employer", eid=eid))
             except forms.FormError as exc:
                 errors, values = exc.errors, {**values, **request.form.to_dict()}
-        positions = get_db().execute("SELECT * FROM position WHERE employer_id=? ORDER BY title",
-                                     (eid or 0,)).fetchall()
+                addresses = new_addresses
+        positions = d.execute("SELECT * FROM position WHERE employer_id=? ORDER BY title", (eid or 0,)).fetchall()
+        workers = d.execute("SELECT id, ref_no, name_cyr, name_lat, visa_type FROM candidate WHERE employer_id=?"
+                            " ORDER BY name_cyr", (eid or 0,)).fetchall()
         return render_template("employer.html", row=row, values=values, errors=errors,
-                               fields=forms.EMPLOYER, positions=positions)
+                               fields=forms.EMPLOYER, positions=positions, addresses=addresses, workers=workers,
+                               attach_groups=dbm.EMPLOYER_ATTACHMENTS,
+                               files=_attachments("employer", eid) if eid else {})
+
+    def _save_addresses(eid, new_addresses):
+        """Replace the employer's address list. Workers keep the text of the address they already have."""
+        d = get_db()
+        d.execute("DELETE FROM employer_address WHERE employer_id=?", (eid,))
+        for i, a in enumerate(new_addresses):
+            d.execute("INSERT INTO employer_address (employer_id, address, sort_order) VALUES (?,?,?)", (eid, a, i))
+        d.commit()
+
+    # ------------------------------------------------------------ attachments
+    def _attachments(owner_type, owner_id):
+        out = {}
+        for a in get_db().execute("SELECT * FROM attachment WHERE owner_type=? AND owner_id=?"
+                                  " ORDER BY uploaded_at, id", (owner_type, owner_id)):
+            out.setdefault(a["category"], []).append(a)
+        return out
+
+    attach_categories = {"worker": dict(dbm.WORKER_ATTACHMENTS), "employer": dict(dbm.EMPLOYER_ATTACHMENTS)}
+    owner_page = {"worker": ("candidate", "cid", "candidate"), "employer": ("employer", "eid", "employer")}
+
+    @app.post("/attachments/<owner_type>/<int:owner_id>/<category>")
+    def attachment_upload(owner_type, owner_id, category):
+        if category not in attach_categories.get(owner_type, {}):
+            abort(404)
+        endpoint, arg, table = owner_page[owner_type]
+        _one(f"SELECT id FROM {table} WHERE id=?", owner_id)
+        files = [f for f in request.files.getlist("files") if f and f.filename]
+        back = url_for(endpoint, **{arg: owner_id}) + "#attachments"
+        if not files:
+            flash("Изберете поне един файл.", "error")
+            return redirect(back)
+        d = get_db()
+        folder = Path(dbm.data_dir()) / "attachments"
+        for f in files:
+            original = Path(f.filename.replace("\\", "/")).name[:200] or "файл"
+            ext = re.sub(r"[^a-z0-9.]", "", Path(original).suffix.lower())[:10]
+            stored = f"{owner_type}-{owner_id}-{datetime.now():%Y%m%d%H%M%S}-{secrets.token_hex(4)}{ext}"
+            f.save(folder / stored)
+            d.execute("INSERT INTO attachment (owner_type, owner_id, category, stored_name, original_name)"
+                      " VALUES (?,?,?,?,?)", (owner_type, owner_id, category, stored, original))
+        d.commit()
+        flash(f"Качени файлове: {len(files)} в „{attach_categories[owner_type][category]}“.", "ok")
+        return redirect(back)
+
+    @app.get("/attachments/<int:aid>")
+    def attachment_get(aid):
+        a = _one("SELECT * FROM attachment WHERE id=?", aid)
+        return send_file(Path(dbm.data_dir()) / "attachments" / a["stored_name"],
+                         download_name=a["original_name"], as_attachment=request.args.get("dl") == "1")
+
+    @app.post("/attachments/<int:aid>/delete")
+    def attachment_delete(aid):
+        a = _one("SELECT * FROM attachment WHERE id=?", aid)
+        get_db().execute("DELETE FROM attachment WHERE id=?", (aid,))
+        get_db().commit()
+        (Path(dbm.data_dir()) / "attachments" / a["stored_name"]).unlink(missing_ok=True)
+        endpoint, arg, _ = owner_page[a["owner_type"]]
+        flash(f"Файлът „{a['original_name']}“ е изтрит.", "ok")
+        return redirect(url_for(endpoint, **{arg: a["owner_id"]}) + "#attachments")
 
     @app.route("/employers/<int:eid>/positions/new", methods=["GET", "POST"])
     @app.route("/positions/<int:pid>", methods=["GET", "POST"])
@@ -382,6 +546,18 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                       "doc_city": "София",
                       "candidate_id": request.args.get("candidate_id", type=int),
                       "employer_id": request.args.get("employer_id", type=int)}
+            w = d.execute("SELECT employer_id, position_id, visa_type FROM candidate WHERE id=?",
+                          (values["candidate_id"] or 0,)).fetchone()
+            if w:  # the worker profile already knows the employer, position and visa type
+                values["employer_id"] = values["employer_id"] or w["employer_id"]
+                if values["employer_id"] == w["employer_id"]:
+                    values["position_id"] = w["position_id"]
+                ct = d.execute(
+                    "SELECT id FROM case_type WHERE (?='Удължаване' AND is_extension=1)"
+                    " OR (?<>'Удължаване' AND is_extension=0 AND residence_period=?)"
+                    " ORDER BY sort_order LIMIT 1", (w["visa_type"],) * 3).fetchone()
+                if ct and w["visa_type"]:
+                    values["case_type_id"] = ct["id"]
         errors = {}
         if request.method == "POST":
             try:
