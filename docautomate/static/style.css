@@ -171,7 +171,7 @@ tr.inactive td { opacity: .55; }
 .field label.check { font-weight: 400; display: inline-flex; gap: 8px; align-items: center; margin-right: 16px; }
 .req { color: var(--err); }
 input, select, textarea {
-  font: inherit; min-height: 38px; padding: 7px 10px; border: 1px solid #c9d0dc; border-radius: var(--r-sm);
+  font: inherit; font-size: 16px; min-height: 38px; padding: 7px 10px; border: 1px solid #c9d0dc; border-radius: var(--r-sm);
   background: #fff; color: var(--ink); width: 100%; transition: border-color .12s, box-shadow .12s;
 }
 input:hover, select:hover, textarea:hover { border-color: #aeb7c6; }
@@ -184,6 +184,8 @@ input[type=file]::file-selector-button {
   border-radius: var(--r-sm); background: var(--sunken); color: var(--ink); cursor: pointer;
 }
 textarea { resize: vertical; line-height: 1.5; }
+/* 16px+ in text fields: iOS Safari zooms the page on focus below that */
+textarea.mono, input.mono { font-size: 16px; }
 .has-error input, .has-error select, .has-error textarea { border-color: var(--err); background: #fffafa; }
 .err { color: var(--err); font-size: .86rem; margin: 2px 0; }
 fieldset {

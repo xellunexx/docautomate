@@ -78,16 +78,27 @@ def _normalise_lines(text: str) -> list[str]:
     return lines
 
 
+def _looks_like_line2(line: str) -> bool:
+    """True when the passport-number, birth-date and expiry check digits all pass."""
+    s = (line + "<" * 44)[:44]
+    pairs = ((s[0:9], s[9]), (_fix_digits(s[13:19]), _fix_digits(s[19])), (_fix_digits(s[21:27]), _fix_digits(s[27])))
+    return all(check_digit(data) == cd for data, cd in pairs)
+
+
 def find_mrz_lines(text: str) -> tuple[str, str] | None:
     lines = _normalise_lines(text)
+    pad = lambda x: (x + "<" * 44)[:44]  # noqa: E731
+    # 1) best evidence: a line starting with P directly above a line whose check digits pass.
+    #    Finds line 1 even when OCR misread its '<' fillers (e.g. as K), and skips headings.
+    for i in range(len(lines) - 1):
+        if lines[i].startswith("P") and _looks_like_line2(lines[i + 1]):
+            return pad(lines[i]), pad(lines[i + 1])
+    # 2) line 1 always has '<' (surname<<given names); a long filler-free heading is not line 1
     for i, line in enumerate(lines):
-        # line 1 always has '<' (surname<<given names); a long filler-free heading is not line 1
         if line.startswith("P") and "<" in line and i + 1 < len(lines):
-            l1 = (line + "<" * 44)[:44]
-            l2 = (lines[i + 1] + "<" * 44)[:44]
-            return l1, l2
+            return pad(line), pad(lines[i + 1])
     if len(lines) >= 2:
-        return (lines[-2] + "<" * 44)[:44], (lines[-1] + "<" * 44)[:44]
+        return pad(lines[-2]), pad(lines[-1])
     return None
 
 

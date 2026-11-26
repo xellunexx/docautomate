@@ -99,3 +99,10 @@ def test_long_heading_is_not_taken_as_line_one():
     text = "PASSPORT UNITED KINGDOM OF GREAT BRITAIN AND NORTHERN IRELAND\n" + make_mrz() + "\n"
     r = mrz.parse_mrz(text)
     assert r.passport_no == "AB1234567" and r.valid, r.warnings
+
+
+def test_line_one_with_fillers_misread_as_k_and_noise_after():
+    l1, l2 = make_mrz().split("\n")
+    text = l1.replace("<", "K") + "\n" + l2 + "\nSOMENOISELINEFROMTHEPAGEFOOTER1234567890XYZ\n"
+    r = mrz.parse_mrz(text)
+    assert r.passport_no == "AB1234567" and r.birth_date == "1985-01-01", r.raw
