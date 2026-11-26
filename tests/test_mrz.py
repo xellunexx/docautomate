@@ -107,3 +107,8 @@ def test_line_one_with_fillers_misread_as_k_and_noise_after():
     r = mrz.parse_mrz(text)
     assert r.passport_no == "AB1234567" and r.birth_date == "1985-01-01", r.raw
     assert not r.valid and r.name_lat == "" and any("Името" in w for w in r.warnings)  # garbled name is not suggested
+
+
+def test_surname_only_name_is_valid():
+    r = mrz.parse_mrz(make_mrz(surname="IVANOV", given=""))
+    assert r.valid and r.surname == "IVANOV" and r.given_names == "" and not r.warnings, r.warnings

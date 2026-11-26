@@ -115,7 +115,9 @@ def parse_mrz(text: str) -> MrzResult:
         surname, _, given = names.partition("<<")
         res.surname = surname.replace("<", " ").strip()
         res.given_names = given.replace("<", " ").strip()
-    else:  # the << between surname and given names was misread: do not suggest a garbled name
+    elif "<" in l1[5:]:  # fillers were read, so this is a name with a surname only (allowed by ICAO)
+        res.surname = names.replace("<", " ").strip()
+    else:  # no '<' at all on line 1: fillers/separator misread (e.g. as K) - do not suggest a garbled name
         res.warnings.append("Името не е разчетено ясно – въведете го ръчно.")
 
     pno, pno_cd = l2[0:9], l2[9]
