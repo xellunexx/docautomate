@@ -75,3 +75,21 @@ def test_ocr_reads_synthetic_scan(tmp_path):
     r = mrz.read_mrz_from_file(p)
     assert r.valid, (r.raw, r.warnings)
     assert r.passport_no == "AB1234567" and r.gender == "M"
+
+
+def test_second_line_without_filler():
+    l1 = "P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<"
+    l2 = "L898902C36UTO7408122F1204159ZE184226B1234508"
+    pno, dob, exp, personal = l2[0:10], l2[13:20], l2[21:28], l2[28:42]
+    l2 = l2[:42] + mrz.check_digit(personal) + mrz.check_digit(pno + dob + exp + personal + mrz.check_digit(personal))
+    r = mrz.parse_mrz(l1 + "\n" + l2)
+    assert r.found and r.valid, r.warnings
+
+
+def test_detected_mrz_beats_no_mrz(monkeypatch, tmp_path):
+    good = make_mrz()
+    l1, l2 = good.split("\n")
+    broken = l1 + "\n" + l2[:13] + "850102" + l2[19:]
+    monkeypatch.setattr(mrz, "ocr_passes", lambda p: ["no mrz here", broken])
+    r = mrz.read_mrz_from_file(tmp_path / "x.png")
+    assert r.found and r.passport_no == "AB1234567"

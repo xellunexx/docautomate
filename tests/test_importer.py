@@ -99,3 +99,29 @@ def test_airtable_pagination_and_ids(tmp_path, monkeypatch):
     assert conn.execute("SELECT count(*) FROM candidate").fetchone()[0] == 2
     assert conn.execute('SELECT count(*) FROM "case"').fetchone()[0] == 1
     assert conn.execute("SELECT birth_date FROM candidate WHERE airtable_id='rec1'").fetchone()[0] == "1990-01-02"
+
+
+def test_country_alias_case_insensitive(tmp_path):
+    from docautomate.db import find_country
+    conn = _db(tmp_path)
+    conn.execute("UPDATE country SET aliases='Uzbekistan' WHERE iso3='UZB'")
+    assert find_country(conn, "uzbekistan")["iso3"] == "UZB"
+
+
+def test_latin_only_record_not_duplicated(tmp_path):
+    rows = [["", "Example Person", "01.02.1990", "", "", "", "", "", "", "", "", ""]]
+    conn = _db(tmp_path)
+    importer.import_records(conn, importer.read_csv(_csv(tmp_path, rows)))
+    importer.import_records(conn, importer.read_csv(_csv(tmp_path, rows)))
+    assert conn.execute("SELECT count(*) FROM candidate").fetchone()[0] == 1
+
+
+def test_api_import_links_case_from_earlier_csv(tmp_path):
+    conn = _db(tmp_path)
+    importer.import_records(conn, importer.read_csv(_csv(tmp_path)))
+    n_cases = conn.execute('SELECT count(*) FROM "case"').fetchone()[0]
+    api = [{"_id": "recX", "Име": "Тестов Тест", "Номер паспорт": "XX0000001", "Фирма": "ТЕСТ ЕООД",
+            "Позиция": "Общ работник", "Тип виза": "3 години"}]
+    importer.import_records(conn, api)
+    assert conn.execute('SELECT count(*) FROM "case"').fetchone()[0] == n_cases
+    assert conn.execute('SELECT count(*) FROM "case" WHERE airtable_id=\'recX\'').fetchone()[0] == 1

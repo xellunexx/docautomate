@@ -4,20 +4,22 @@
 {% block body %}
 <p class="crumbs"><a href="{{ url_for('cases') }}">Случаи</a> /</p>
 <h1>{{ 'Редакция на случай' if row else ('Нов случай – копие на случай №' ~ copy_id if copy_id else 'Нов случай') }}</h1>
-{% if copy_id and not row %}<p class="help">Условията са копирани. Изберете кандидата и проверете полетата. Старият случай и документите му не се променят.</p>{% endif %}
+{% if copy_id and not row %}<p class="intro">Условията са копирани от случай №{{ copy_id }}. Изберете кандидата, проверете полетата и натиснете „Запиши случая“. Старият случай и документите му не се променят.</p>
+{% elif row %}<p class="intro">Промените влизат в документите при следващото „Генерирай PDF“. Вече генерираните PDF не се променят.</p>
+{% else %}<p class="intro">Изберете кандидат, работодател и вид случай (задължителни), попълнете условията и натиснете „Запиши случая“. PDF се генерира от страницата на случая.</p>{% endif %}
 {{ error_box(errors) }}
 <form method="post" class="grid-form" id="case-form">
   <fieldset class="wide">
-    <legend>Кой, при кого, какво</legend>
+    <legend>Кой, при кого, какъв случай</legend>
     <div class="grid-form inner">
       <div class="field {{ 'has-error' if errors.get('Кандидат') }}">
         <label for="f-candidate">Кандидат <span class="req">*</span></label>
-        <input list="cand-list" id="cand-search" placeholder="Пишете име или паспорт…" autocomplete="off" aria-label="Търсене на кандидат">
+        <input id="cand-search" placeholder="Търси: име или паспорт…" autocomplete="off" aria-label="Търси кандидат в списъка по име или паспорт" title="Пишете и първото съвпадение се избира в списъка отдолу">
         <select id="f-candidate" name="candidate_id" required>
           <option value="">—</option>
           {% for c in candidates %}<option value="{{ c.id }}" {{ 'selected' if values.candidate_id|string == c.id|string }}>{{ c.name_cyr or c.name_lat }}{{ ' · ' ~ c.passport_no if c.passport_no }}</option>{% endfor %}
         </select>
-        <p class="help"><a href="{{ url_for('candidate') }}" target="_blank">+ нов кандидат</a></p>
+        <p class="help">Няма го в списъка? <a href="{{ url_for('candidate') }}" target="_blank" title="Отваря нов кандидат в нов раздел. След запис презаредете тази страница.">Добави нов кандидат</a> (в нов раздел, после презаредете тази страница).</p>
       </div>
       <div class="field {{ 'has-error' if errors.get('Работодател') }}">
         <label for="f-employer">Работодател <span class="req">*</span></label>
@@ -25,7 +27,7 @@
           <option value="">—</option>
           {% for e in employers %}<option value="{{ e.id }}" {{ 'selected' if values.employer_id|string == e.id|string }}>{{ e.name }}</option>{% endfor %}
         </select>
-        <p class="help"><a href="{{ url_for('employer') }}" target="_blank">+ нов работодател</a></p>
+        <p class="help">Няма я в списъка? <a href="{{ url_for('employer') }}" target="_blank" title="Отваря нов работодател в нов раздел. След запис презаредете тази страница.">Добави нов работодател</a> (в нов раздел).</p>
       </div>
       <div class="field {{ 'has-error' if errors.get('position_id') }}">
         <label for="f-position">Длъжност</label>
@@ -33,14 +35,14 @@
           <option value="">—</option>
           {% for p in positions %}<option value="{{ p.id }}" data-employer="{{ p.employer_id }}" {{ 'selected' if values.position_id|string == p.id|string }}>{{ p.title }}{{ ' (' ~ p.nkpd ~ ')' if p.nkpd }}</option>{% endfor %}
         </select>
-        {% if errors.get('position_id') %}<p class="err">{{ errors.position_id }}</p>{% else %}<p class="help">Показват се длъжностите на избрания работодател.</p>{% endif %}
+        {% if errors.get('position_id') %}<p class="err">{{ errors.position_id }}</p>{% else %}<p class="help">Показват се само длъжностите на избрания работодател. Без длъжност обосновката и ДХ излизат празни.</p>{% endif %}
       </div>
       <div class="field {{ 'has-error' if errors.get('Вид случай') }}">
         <label for="f-ctype">Вид случай <span class="req">*</span></label>
         <select id="f-ctype" name="case_type_id" required>
           {% for t in case_types %}<option value="{{ t.id }}" {{ 'selected' if values.case_type_id|string == t.id|string }}>{{ t.name }}</option>{% endfor %}
         </select>
-        <p class="help">Определя кои бланки се генерират.</p>
+        <p class="help">Определя кои бланки се генерират (настройва се в меню Бланки).</p>
       </div>
     </div>
   </fieldset>
@@ -50,11 +52,11 @@
       {% for f in fields %}{{ field(f, values, errors) }}{% endfor %}
     </div>
   </fieldset>
-  <div class="form-actions"><button class="btn primary">Запиши</button></div>
+  <div class="form-actions"><button class="btn primary" title="Записва случая и отваря страницата му, откъдето се генерират PDF">Запиши случая</button></div>
 </form>
 {% if row %}
-<form method="post" action="{{ url_for('case_delete', case_id=row.id) }}" class="danger-zone" onsubmit="return confirm('Да изтрия ли случая?')">
-  <button class="btn danger">Изтрий случая</button> <span class="help">Само ако още няма генерирани документи.</span>
+<form method="post" action="{{ url_for('case_delete', case_id=row.id) }}" class="danger-zone" onsubmit="return confirm('Да изтрия ли случая завинаги? Кандидатът и работодателят остават.')">
+  <button class="btn danger" title="Изтрива само този случай. Кандидатът и работодателят остават.">Изтрий случая</button> <span class="help">Може само ако още няма генерирани документи. Кандидатът и работодателят остават.</span>
 </form>
 {% endif %}
 {% endblock %}
@@ -82,7 +84,7 @@
       o.hidden = !m;
       if (m && !first) first = o;
     }
-    if (first && q) sel.value = first.value;
+    if (q) sel.value = first ? first.value : '';  // no match: clear, so a hidden old choice is not sent
   });
 })();
 </script>

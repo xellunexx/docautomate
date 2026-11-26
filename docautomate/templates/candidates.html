@@ -3,24 +3,29 @@
 {% block body %}
 <div class="head-row">
   <h1>Кандидати</h1>
-  <form class="search" method="get"><input name="q" value="{{ q }}" placeholder="Име, паспорт, телефон" aria-label="Търсене"><button class="btn">Търси</button></form>
-  <a class="btn primary" href="{{ url_for('candidate') }}">+ Нов кандидат</a>
+  <form class="search" method="get" role="search">
+    <input name="q" value="{{ q }}" placeholder="Име, паспорт или телефон" aria-label="Търси кандидат по име, паспорт или телефон">
+    <button class="btn" title="Показва само кандидатите, които съдържат този текст">Търси</button>
+    {% if q %}<a class="btn link" href="{{ url_for('candidates') }}" title="Показва всички кандидати">Изчисти</a>{% endif %}
+  </form>
+  <a class="btn primary" href="{{ url_for('candidate') }}" title="Отваря празен формуляр за нов кандидат">+ Нов кандидат</a>
 </div>
+<p class="intro">Личните и паспортните данни на всеки чужденец. Кликнете името, за да го отворите и редактирате.</p>
 {% if rows %}
 <table class="list">
-  <thead><tr><th>Имена</th><th>Латиница</th><th>Паспорт</th><th>Гражданство</th><th>Роден</th><th>Статус</th></tr></thead>
+  <thead><tr><th>Имена на кирилица</th><th>Латиница</th><th>Паспорт №</th><th>Гражданство</th><th>Роден на</th><th>Статус</th></tr></thead>
   <tbody>
   {% for r in rows %}
   <tr>
-    <td><a href="{{ url_for('candidate', cid=r.id) }}">{{ r.name_cyr or '(без име)' }}</a></td>
+    <td><a href="{{ url_for('candidate', cid=r.id) }}" title="Отваря кандидата за преглед и редакция">{{ r.name_cyr or '(без име)' }}</a></td>
     <td>{{ r.name_lat }}</td><td>{{ r.passport_no }}</td><td>{{ r.citizenship or '' }}</td>
     <td>{{ r.birth_date|bgdate }}</td><td class="muted">{{ r.status }}</td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
-{% if rows|length == 500 %}<p class="muted small">Показани са първите 500. Използвайте търсенето.</p>{% endif %}
+{% if rows|length == 500 %}<p class="muted small">Показани са първите 500 кандидати. Използвайте търсенето.</p>{% endif %}
 {% else %}
-<p class="empty">{{ 'Няма резултати.' if q else 'Още няма кандидати.' }}</p>
+<p class="empty">{{ 'Няма кандидат с „' ~ q ~ '“.' if q else 'Още няма кандидати. Натиснете „+ Нов кандидат“ или прехвърлете от Airtable (меню Импорт).' }}</p>
 {% endif %}
 {% endblock %}

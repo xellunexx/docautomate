@@ -27,5 +27,5 @@
 {%- endmacro %}
 
 {% macro error_box(errors) -%}
-{% if errors %}<div class="flash error" role="alert">Поправете полетата, отбелязани в червено ({{ errors|length }}).</div>{% endif %}
+{% if errors %}<div class="flash error" role="alert">Нищо не е записано. Поправете {{ errors|length }} {{ 'поле, отбелязано' if errors|length == 1 else 'полета, отбелязани' }} в червено, и запишете отново.</div>{% endif %}
 {%- endmacro %}

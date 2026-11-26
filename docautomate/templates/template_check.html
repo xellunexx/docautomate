@@ -15,5 +15,5 @@
 <p class="help">Тези имена не съществуват. Проверете правописа в <a href="{{ url_for('placeholders') }}">списъка на полетата</a>.</p>
 {% endif %}
 {% if check.used %}<p class="muted small">Разпознати полета: {{ check.used|sort|join(', ') }}</p>{% endif %}
-<p><a class="btn" href="{{ url_for('templates') }}">Обратно към бланките</a></p>
+<p><a class="btn" href="{{ url_for('templates') }}" title="Връща към списъка с бланки, за да качите поправения файл">Обратно към бланките</a> <a class="btn link" href="{{ url_for('placeholders') }}" title="Всички правилни имена на полета">Списък на полетата</a></p>
 {% endblock %}

@@ -183,7 +183,7 @@ def _case_type_id(conn, visa: str) -> int:
     return conn.execute("INSERT INTO case_type (name, residence_period) VALUES (?,?)", (name, name)).lastrowid
 
 
-def _find_candidate(conn, rec_id, passport, name, dob):
+def _find_candidate(conn, rec_id, passport, name, dob, name_lat=""):
     if rec_id:
         row = conn.execute("SELECT * FROM candidate WHERE airtable_id=?", (rec_id,)).fetchone()
         if row:
@@ -198,6 +198,13 @@ def _find_candidate(conn, rec_id, passport, name, dob):
         # no passport and no date: only an exact name match with the same gaps counts as the same person
         return conn.execute("SELECT * FROM candidate WHERE name_cyr=? AND passport_no='' AND birth_date IS NULL",
                             (name,)).fetchone()
+    if name_lat and not name and not passport:
+        # Latin name only: same rules, on the Latin name
+        if dob:
+            return conn.execute("SELECT * FROM candidate WHERE name_cyr='' AND name_lat=? AND birth_date=?",
+                                (name_lat, dob)).fetchone()
+        return conn.execute("SELECT * FROM candidate WHERE name_cyr='' AND name_lat=? AND passport_no=''"
+                            " AND birth_date IS NULL", (name_lat,)).fetchone()
     return None
 
 
@@ -227,7 +234,7 @@ def import_records(conn: sqlite3.Connection, records: list[dict], day_first: boo
             "citizenship_id": country["id"] if country else None,
             "phone": _text(rec.get(F_PHONE)), "status": _text(rec.get(F_STATUS)),
         }
-        existing = _find_candidate(conn, rec_id, passport, name, dob)
+        existing = _find_candidate(conn, rec_id, passport, name, dob, name_lat)
         if existing is None:
             cols = {k: v for k, v in values.items() if v not in (None, "")}
             if rec_id:
@@ -260,6 +267,14 @@ def import_records(conn: sqlite3.Connection, records: list[dict], day_first: boo
         ctype = _case_type_id(conn, _text(rec.get(F_VISA)))
         if rec_id:
             dup = conn.execute('SELECT id FROM "case" WHERE airtable_id=?', (rec_id,)).fetchone()
+            if not dup:
+                # same case imported earlier from CSV (no Airtable id): link it instead of duplicating
+                unlinked = conn.execute(
+                    'SELECT id FROM "case" WHERE candidate_id=? AND employer_id=? AND case_type_id=?'
+                    " AND airtable_id IS NULL", (cid, emp_id, ctype)).fetchall()
+                if len(unlinked) == 1:
+                    conn.execute('UPDATE "case" SET airtable_id=? WHERE id=?', (rec_id, unlinked[0]["id"]))
+                    dup = unlinked[0]
         else:
             dup = conn.execute('SELECT id FROM "case" WHERE candidate_id=? AND employer_id=? AND case_type_id=?',
                                (cid, emp_id, ctype)).fetchone()

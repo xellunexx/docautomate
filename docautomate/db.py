@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS doc_template (
     name TEXT NOT NULL,
     filename TEXT NOT NULL UNIQUE,         -- stored under data/templates/
     is_master INTEGER NOT NULL DEFAULT 0,  -- shipped with the app
+    master_key TEXT UNIQUE,                -- manifest file name of a shipped master; never changes
     is_active INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL DEFAULT 100,
     placeholders TEXT NOT NULL DEFAULT '',
@@ -201,8 +202,18 @@ def close_db(_exc=None):
         db.close()
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bring databases created by older versions up to the current schema."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(doc_template)")}
+    if "master_key" not in cols:
+        conn.execute("ALTER TABLE doc_template ADD COLUMN master_key TEXT")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_doc_template_master_key ON doc_template(master_key)")
+        # existing master rows get their key in app.install_masters (matched by file or name)
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _migrate(conn)
     for iso3, name, official, ru_gen, ru_instr, aliases in COUNTRIES:
         conn.execute(
             "INSERT OR IGNORE INTO country (iso3, name, name_official, name_ru_gen, name_ru_instr, aliases)"
@@ -227,7 +238,7 @@ def find_country(conn: sqlite3.Connection, text: str | None):
         return None
     for row in conn.execute("SELECT * FROM country"):
         names = {row["name"].lower(), row["name_official"].lower(), (row["iso3"] or "").lower()}
-        names |= {a.strip() for a in row["aliases"].split(",") if a.strip()}
+        names |= {a.strip().lower() for a in row["aliases"].split(",") if a.strip()}
         if t in names:
             return row
     return None

@@ -4,16 +4,17 @@
 {% block body %}
 <p class="crumbs"><a href="{{ url_for('employers') }}">Работодатели</a> / <a href="{{ url_for('employer', eid=emp.id) }}">{{ emp.name }}</a> /</p>
 <h1>{{ row.title if row else 'Нова длъжност' }}</h1>
+<p class="intro">Длъжност при {{ emp.name }}. Текстовете тук влизат в обосновката и длъжностната характеристика на всеки кандидат на тази длъжност.</p>
 {% if not row and others %}
 <form method="get" class="inline-form">
-  <label for="copy">Започни от текстовете на друга длъжност:</label>
+  <label for="copy">Копирай текстовете от друга длъжност:</label>
   <select id="copy" name="copy">{% for o in others %}<option value="{{ o.id }}">{{ o.title }} – {{ o.employer }}</option>{% endfor %}</select>
-  <button class="btn">Зареди</button>
+  <button class="btn" title="Попълва формуляра с текстовете на избраната длъжност. Нищо не се записва до „Запиши длъжността“.">Зареди текстовете</button>
 </form>
 {% endif %}
 {{ error_box(errors) }}
 <form method="post" class="grid-form">
   {% for f in fields %}{{ field(f, values, errors) }}{% endfor %}
-  <div class="form-actions"><button class="btn primary">Запиши</button></div>
+  <div class="form-actions"><button class="btn primary" title="Записва длъжността и текстовете ѝ">Запиши длъжността</button></div>
 </form>
 {% endblock %}

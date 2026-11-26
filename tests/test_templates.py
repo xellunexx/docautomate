@@ -125,3 +125,16 @@ def test_not_a_docx(tmp_path):
     p.write_text("hello")
     c = render.check_template(p)
     assert not c.ok and "Word" in c.errors[0]
+
+
+def test_sandbox_blocks_code_execution(tmp_path):
+    payload = "{% set c = cycler %}{{ c.__init__.__globals__.os.system('echo hacked') }}"
+    c = render.check_template(_make(tmp_path, payload))
+    assert not c.ok
+
+
+def test_loop_variable_is_allowed_only_inside_for(tmp_path):
+    ok = render.check_template(_make(tmp_path, "{% for x in position.dh_duties %}{{ loop.index }}. {{ x }}{% endfor %}"))
+    assert ok.ok, (ok.errors, ok.unknown)
+    bad = render.check_template(_make(tmp_path, "{{ loop.index }}"))
+    assert not bad.ok and "loop" in bad.unknown

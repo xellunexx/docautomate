@@ -198,3 +198,55 @@ def test_masters_installed_once(app, tmp_path):
     n = conn.execute("SELECT count(*) FROM case_type_template").fetchone()[0]
     assert n == 6 + 2 + 2
     conn.close()
+
+
+def test_every_button_and_nav_link_has_a_description(client, app):
+    """Each button, button-styled link and menu item carries a title (tooltip) saying what it does."""
+    _setup_case(client, app)
+    client.post("/cases/1/generate")
+    pages = ("/", "/candidates", "/employers", "/cases", "/templates", "/placeholders", "/case-types", "/countries",
+             "/import", "/candidates/new", "/candidates/1", "/employers/1", "/positions/1", "/employers/1/positions/new",
+             "/cases/new", "/cases/1", "/cases/1/edit", "/cases/new?copy=1")
+    tag = re.compile(r"<(button|a)\b([^>]*)>", re.S)
+    for url in pages:
+        html = client.get(url).data.decode()
+        header = html[html.index('<header'):html.index('</header>')]
+        for kind, attrs in tag.findall(header):
+            assert "title=" in attrs, f"{url}: menu <{kind}{attrs[:120]}> has no title"
+        for kind, attrs in tag.findall(html[html.index('</header>'):]):
+            if kind == "button" or 'class="btn' in attrs:
+                assert "title=" in attrs, f"{url}: <{kind}{attrs[:120]}> has no title"
+
+
+def test_replaced_master_is_not_reinstalled(client, app):
+    from docautomate.app import create_app
+    good = docx.Document()
+    good.add_paragraph("Заменена обосновка за {{ candidate.name_cyr }}")
+    buf = io.BytesIO()
+    good.save(buf)
+    conn = connect(Path(app.config["DATABASE"]))
+    tid = conn.execute("SELECT id FROM doc_template WHERE master_key='obosnovka.docx'").fetchone()[0]
+    client.post("/templates/upload", data={"file": (io.BytesIO(buf.getvalue()), "o.docx"), "replace_id": str(tid)},
+                content_type="multipart/form-data")
+    create_app(data_dir=Path(app.config["DATA_DIR"]), testing=True)  # restart
+    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == 6
+    conn.close()
+
+
+def test_same_template_names_do_not_overwrite_and_partial_pdf_kept(client, app, monkeypatch):
+    from docautomate import render
+    eid, pid, cid, case_id = _setup_case(client, app)
+    conn = connect(Path(app.config["DATABASE"]))
+    conn.execute("UPDATE doc_template SET name='Едно и също'")
+    conn.commit()
+
+    def fake_pdf(files, outdir):  # only the first file converts
+        p = outdir / (files[0].stem + ".pdf")
+        p.write_bytes(b"%PDF-1.4 fake")
+        return {files[0]: p}
+    monkeypatch.setattr(render, "to_pdf", fake_pdf)
+    client.post(f"/cases/{case_id}/generate")
+    rows = conn.execute("SELECT docx_name, pdf_name FROM generated_file").fetchall()
+    assert len({r["docx_name"] for r in rows}) == 6  # six distinct files
+    assert sum(1 for r in rows if r["pdf_name"]) == 1  # the converted one is kept
+    conn.close()

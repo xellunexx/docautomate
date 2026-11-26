@@ -13,7 +13,12 @@ def main():
     p.add_argument("--no-browser", action="store_true")
     args = p.parse_args()
     app = create_app()
-    url = f"http://127.0.0.1:{args.port}"
+    host = args.host
+    if host in ("0.0.0.0", "", "::"):
+        host = "127.0.0.1"  # wildcard: open it on this computer
+    if ":" in host:
+        host = f"[{host}]"  # IPv6 literal
+    url = f"http://{host}:{args.port}"
     print(f"Docautomate работи на {url}  (спиране: Ctrl+C)")
     print(f"Данни: {app.config['DATA_DIR']}")
     if not args.no_browser:

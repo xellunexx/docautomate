@@ -37,6 +37,7 @@ class MrzResult:
     expiry_date: str | None = None  # ISO
     gender: str = ""            # M / F / ''
     valid: bool = False         # all check digits passed
+    found: bool = False         # an MRZ (two lines) was located at all
     warnings: list[str] = field(default_factory=list)
     raw: str = ""
 
@@ -71,7 +72,8 @@ def _normalise_lines(text: str) -> list[str]:
     for raw in text.upper().splitlines():
         s = re.sub(r"\s+", "", raw).replace("«", "<").replace("‹", "<")
         s = re.sub(r"[^A-Z0-9<]", "", s)
-        if len(s) >= 30 and "<" in s:
+        # line 2 may have no '<' filler when every optional position is used
+        if len(s) >= 30 and ("<" in s or len(s) >= 42):
             lines.append(s)
     return lines
 
@@ -94,7 +96,7 @@ def parse_mrz(text: str) -> MrzResult:
         return MrzResult(warnings=["Не е намерена MRZ зона (двата реда с <<< в долната част на паспорта)."],
                          raw=text)
     l1, l2 = found
-    res = MrzResult(raw=f"{l1}\n{l2}")
+    res = MrzResult(raw=f"{l1}\n{l2}", found=True)
     res.issuing_country = l1[2:5].replace("<", "")
     names = l1[5:].rstrip("<")
     surname, _, given = names.partition("<<")
@@ -200,4 +202,5 @@ def read_mrz_from_file(path: Path) -> MrzResult:
     for r in results:
         if r.valid:
             return r
-    return min(results, key=lambda r: len(r.warnings))
+    # a detected MRZ (even with bad check digits) beats "no MRZ found"
+    return min(results, key=lambda r: (not r.found, len(r.warnings)))

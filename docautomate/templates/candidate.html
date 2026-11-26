@@ -5,23 +5,24 @@
 <p class="crumbs"><a href="{{ url_for('candidates') }}">Кандидати</a> /</p>
 <div class="head-row">
   <h1>{{ row.name_cyr if row else 'Нов кандидат' }}</h1>
-  {% if row %}<a class="btn primary" href="{{ url_for('case_edit', candidate_id=row.id) }}">+ Нов случай за кандидата</a>{% endif %}
+  {% if row %}<a class="btn primary" href="{{ url_for('case_edit', candidate_id=row.id) }}" title="Отваря нов случай с този кандидат вече избран">+ Нов случай за кандидата</a>{% endif %}
 </div>
+<p class="intro">{{ 'Промените тук влизат във всички документи, генерирани след запис. Вече генерираните PDF не се променят.' if row else 'Попълнете данните и натиснете „Запиши кандидата“ най-долу. Задължително е само името на кирилица.' }}</p>
 {{ error_box(errors) }}
 
 <section class="panel mrz" id="mrz-panel">
-  <h2>Данни от паспорта</h2>
-  <p class="help">Качете снимка или PDF на страницата със снимката. Програмата разчита двата реда с <code>&lt;&lt;&lt;</code> отдолу и попълва полетата. <b>Проверете ги</b> преди запис. Датата на издаване не е в този ред и се въвежда ръчно.</p>
+  <h2>Попълни от паспорта (по желание)</h2>
+  <p class="help">Изберете снимка или PDF на страницата със снимката и натиснете „Разчети скана“. Програмата чете двата реда с <code>&lt;&lt;&lt;</code> най-долу и попълва: латиница, паспорт №, пол, дата на раждане, валиден до, гражданство, издаден от. Попълнените полета светват в жълто. <b>Нищо не се записва, докато не натиснете „Запиши кандидата“.</b> Датата на издаване и имената на кирилица въведете ръчно.</p>
   <div class="mrz-row">
-    <input type="file" id="mrz-file" accept="image/*,.pdf" aria-label="Скан на паспорта">
-    <button type="button" class="btn" id="mrz-read" {{ 'disabled' if not ocr }}>Разчети скана</button>
+    <input type="file" id="mrz-file" accept="image/*,.pdf" aria-label="Изберете скан на паспорта за разчитане" title="Снимка (JPG, PNG) или PDF на страницата със снимката">
+    <button type="button" class="btn" id="mrz-read" {{ 'disabled' if not ocr }} title="Чете избрания скан и попълва полетата отдолу. Не записва нищо.">Разчети скана</button>
     <span class="muted">или</span>
-    <button type="button" class="btn link" id="mrz-toggle">поставете двата реда ръчно</button>
+    <button type="button" class="btn link" id="mrz-toggle" title="Отваря поле, в което да поставите двата реда с <<< (копирани или преписани)">поставете двата реда ръчно</button>
   </div>
-  {% if not ocr %}<p class="help">Разчитането не е инсталирано на този компютър (виж README). Може да поставите редовете ръчно.</p>{% endif %}
+  {% if not ocr %}<p class="help">Разчитането от скан не е инсталирано на този компютър. Може да поставите двата реда ръчно или да попълните полетата.</p>{% endif %}
   <div id="mrz-text-box" hidden>
     <textarea id="mrz-text" rows="2" class="mono" placeholder="P&lt;UZBIVANOV&lt;&lt;PETR&lt;&lt;&lt;&lt;&lt;…&#10;AB1234567…"></textarea>
-    <button type="button" class="btn" id="mrz-parse">Разчети текста</button>
+    <button type="button" class="btn" id="mrz-parse" title="Чете поставените два реда и попълва полетата отдолу. Не записва нищо.">Разчети поставените редове</button>
   </div>
   <div id="mrz-result" role="status" aria-live="polite"></div>
 </section>
@@ -29,21 +30,21 @@
 <form method="post" enctype="multipart/form-data" class="grid-form" id="cand-form">
   {% for f in fields %}{{ field(f, values, errors, countries) }}{% endfor %}
   <div class="field wide">
-    <label for="f-scan">Скан на паспорта (запазва се към кандидата)</label>
+    <label for="f-scan">Пази скана на паспорта към кандидата</label>
     <input type="file" id="f-scan" name="passport_scan" accept="image/*,.pdf">
-    {% if row and row.passport_scan %}<p class="help"><a href="{{ url_for('candidate_scan', cid=row.id) }}" target="_blank">Отвори записания скан</a></p>{% endif %}
+    <p class="help">По желание. Файлът се записва при „Запиши кандидата“ и остава на този компютър.{% if row and row.passport_scan %} <a href="{{ url_for('candidate_scan', cid=row.id) }}" target="_blank" title="Отваря записания скан в нов раздел">Отвори записания скан</a>{% endif %}</p>
   </div>
-  <div class="form-actions"><button class="btn primary">Запиши</button></div>
+  <div class="form-actions"><button class="btn primary" title="Записва всички полета на кандидата">Запиши кандидата</button></div>
 </form>
 
 {% if row %}
-<h2>Случаи</h2>
+<h2>Случаи на кандидата</h2>
 {% if cases %}
-<table class="list"><thead><tr><th>Вид</th><th>Работодател</th><th>Създаден</th><th></th></tr></thead><tbody>
+<table class="list"><thead><tr><th>Вид случай (отваря случая)</th><th>Работодател</th><th>Създаден</th><th>Действие</th></tr></thead><tbody>
 {% for c in cases %}<tr><td><a href="{{ url_for('case_view', case_id=c.id) }}">{{ c.ctype }}</a></td><td>{{ c.employer }}</td><td class="muted">{{ c.created_at[:10]|bgdate }}</td>
-<td><a href="{{ url_for('case_edit', copy=c.id, candidate_id=row.id) }}" title="Нов случай със същите условия (напр. удължаване)">Копирай</a></td></tr>{% endfor %}
+<td><a href="{{ url_for('case_edit', copy=c.id, candidate_id=row.id) }}" title="Създава нов случай за същия кандидат с копие на условията (напр. за удължаване). Старият случай не се променя.">Копирай като нов случай</a></td></tr>{% endfor %}
 </tbody></table>
-{% else %}<p class="empty">Няма случаи.</p>{% endif %}
+{% else %}<p class="empty">Кандидатът още няма случай. Натиснете „+ Нов случай за кандидата“ горе.</p>{% endif %}
 {% endif %}
 {% endblock %}
 
@@ -70,17 +71,20 @@
     if (changed.length) msg += ' Променени: ' + changed.join('; ') + '.';
     if (data.warnings.length) msg += ' ' + data.warnings.join(' ');
     if (!data.fields.citizenship_id && data.nationality) msg += ' Гражданство „' + data.nationality + '“ не е в списъка с държави.';
-    msg += ' Проверете полетата и натиснете „Запиши“.';
+    msg += ' Проверете жълтите полета и натиснете „Запиши кандидата“ най-долу.';
     show(msg, data.valid ? 'ok' : 'warn');
   }
+  let latest = 0;  // only the newest request may change the form
   async function send(body) {
+    const id = ++latest;
     show('Разчитане…');
     try {
       const r = await fetch('{{ url_for("mrz_read") }}', {method: 'POST', body});
       const data = await r.json();
-      if (!r.ok) return show(data.error || 'Грешка', 'error');
+      if (id !== latest) return;
+      if (!r.ok) return show(data.error || 'Разчитането не успя. Попълнете полетата ръчно.', 'error');
       apply(data);
-    } catch (e) { show('Грешка при връзката: ' + e, 'error'); }
+    } catch (e) { if (id === latest) show('Няма връзка с програмата. Проверете дали черният прозорец е отворен и опитайте пак.', 'error'); }
   }
   document.getElementById('mrz-read').addEventListener('click', () => {
     const f = document.getElementById('mrz-file').files[0];

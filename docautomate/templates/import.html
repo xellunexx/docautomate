@@ -2,18 +2,18 @@
 {% block title %}Импорт от Airtable{% endblock %}
 {% block body %}
 <h1>Импорт от Airtable</h1>
-<p>Еднократно прехвърляне на таблицата <b>Candidates</b>. Може да се пусне отново: съществуващите кандидати не се дублират, а редакциите в програмата не се презаписват. Попълват се само празните полета.</p>
+<p class="intro">Еднократно прехвърляне на таблицата <b>Candidates</b>. Може да се пусне отново: съществуващите кандидати не се дублират, а редакциите в програмата не се презаписват. Попълват се само празните полета.</p>
 <section class="panel">
-  <h2>От CSV файл</h2>
+  <h2>Начин 1: от CSV файл</h2>
   <ol class="help"><li>В Airtable отворете таблицата Candidates → Grid view → меню „…“ → <b>Download CSV</b>.</li><li>Изберете файла тук.</li></ol>
   <form method="post" enctype="multipart/form-data" class="inline-form">
     <input type="file" name="file" accept=".csv" required aria-label="CSV файл">
-    <button class="btn primary">Импортирай</button>
+    <button class="btn primary" title="Чете файла и добавя кандидатите. Ако има грешка, не записва нищо.">Импортирай кандидатите</button>
   </form>
 </section>
-{% if summary %}<section class="panel"><h2>Резултат</h2><pre class="summary">{{ summary }}</pre></section>{% endif %}
+{% if summary %}<section class="panel"><h2>Резултат от импорта</h2><pre class="summary">{{ summary }}</pre></section>{% endif %}
 <section class="panel">
-  <h2>Директно от Airtable</h2>
+  <h2>Начин 2: директно от Airtable (с токен)</h2>
   <p class="help">Пуска се от командния ред на този компютър. Токенът се задава само за прозореца и не се записва никъде:</p>
   <pre class="mono">set AIRTABLE_TOKEN=pat…ваш токен…
 import-airtable.bat</pre>

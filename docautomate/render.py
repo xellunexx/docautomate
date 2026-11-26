@@ -11,6 +11,7 @@ from pathlib import Path
 
 import jinja2
 from jinja2 import nodes
+from jinja2.sandbox import SandboxedEnvironment
 from docxtpl import DocxTemplate
 
 from .context import PLACEHOLDERS, sample_context
@@ -20,8 +21,9 @@ _XML_PARTS = ("word/document.xml", "word/header", "word/footer")
 
 
 def _jinja_env() -> jinja2.Environment:
+    # Sandboxed: an uploaded template cannot reach Python internals (no code execution).
     # StrictUndefined: a misspelled tag fails loudly instead of printing nothing.
-    return jinja2.Environment(undefined=jinja2.StrictUndefined, autoescape=True)
+    return SandboxedEnvironment(undefined=jinja2.StrictUndefined, autoescape=True)
 
 
 @dataclass
@@ -46,6 +48,9 @@ def _collect(ast: nodes.Template) -> tuple[set[str], set[str]]:
     """Return (dotted names like 'candidate.name_cyr', bare top-level names)."""
     dotted, bare = set(), set()
     assigned = {n.name for n in ast.find_all(nodes.Name) if n.ctx in ("store", "param")}
+    # Jinja's implicit `loop` variable is defined inside {% for %} bodies only
+    in_loop = {id(n) for f in ast.find_all(nodes.For) for part in f.body for n in part.find_all(nodes.Name)
+               if n.name == "loop"}
     for n in ast.find_all(nodes.Getattr):
         if isinstance(n.node, nodes.Name) and n.node.name in TOP_LEVEL - {"today"}:
             dotted.add(f"{n.node.name}.{n.attr}")
@@ -53,7 +58,7 @@ def _collect(ast: nodes.Template) -> tuple[set[str], set[str]]:
         if isinstance(n.node, nodes.Name) and isinstance(n.arg, nodes.Const) and n.node.name in TOP_LEVEL:
             dotted.add(f"{n.node.name}.{n.arg.value}")
     for n in ast.find_all(nodes.Name):
-        if n.ctx == "load" and n.name not in assigned:
+        if n.ctx == "load" and n.name not in assigned and id(n) not in in_loop:
             bare.add(n.name)
     return dotted, bare
 
@@ -140,8 +145,11 @@ def _word_available() -> bool:
         return False
     try:
         import win32com.client  # noqa: F401  (pywin32)
+        import winreg
+        # pywin32 alone is not enough: Word must be installed (its COM class registered)
+        winreg.CloseKey(winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, r"Word.Application\CLSID"))
         return True
-    except ImportError:
+    except (ImportError, OSError):
         return False
 
 
@@ -154,7 +162,8 @@ def converter_name() -> str | None:
 
 
 def to_pdf(docx_files: list[Path], outdir: Path) -> dict[Path, Path]:
-    """Convert .docx files to PDF. Returns {docx: pdf}. Raises PdfConverterMissing."""
+    """Convert .docx files to PDF. Returns {docx: pdf} for every file that converted (may be partial;
+    the caller reports the missing ones). Raises PdfConverterMissing, or RuntimeError if nothing converted."""
     outdir.mkdir(parents=True, exist_ok=True)
     soffice = find_soffice()
     result: dict[Path, Path] = {}
@@ -167,9 +176,8 @@ def to_pdf(docx_files: list[Path], outdir: Path) -> dict[Path, Path]:
             pdf = outdir / (f.stem + ".pdf")
             if pdf.exists():
                 result[f] = pdf
-        if len(result) != len(docx_files):
-            missing = [f.name for f in docx_files if f not in result]
-            raise RuntimeError(f"LibreOffice не създаде PDF за: {', '.join(missing)}. {proc.stderr[-500:]}")
+        if not result:
+            raise RuntimeError(f"LibreOffice не създаде нито един PDF. {proc.stderr[-500:]}")
         return result
     if _word_available():
         import pythoncom
@@ -180,14 +188,19 @@ def to_pdf(docx_files: list[Path], outdir: Path) -> dict[Path, Path]:
         try:
             for f in docx_files:
                 pdf = outdir / (f.stem + ".pdf")
-                doc = word.Documents.Open(str(f.resolve()), ReadOnly=True)
                 try:
-                    doc.SaveAs2(str(pdf.resolve()), FileFormat=17)  # wdFormatPDF
-                finally:
-                    doc.Close(False)
-                result[f] = pdf
+                    doc = word.Documents.Open(str(f.resolve()), ReadOnly=True)
+                    try:
+                        doc.SaveAs2(str(pdf.resolve()), FileFormat=17)  # wdFormatPDF
+                    finally:
+                        doc.Close(False)
+                    result[f] = pdf
+                except Exception:  # one bad file must not lose the others
+                    continue
         finally:
             word.Quit()
+        if not result:
+            raise RuntimeError("Microsoft Word не създаде нито един PDF.")
         return result
     raise PdfConverterMissing(
         "Няма програма за PDF. Инсталирайте LibreOffice (безплатно) или Microsoft Word с pywin32."

@@ -64,7 +64,13 @@ def install_masters(conn, templates_dir: Path) -> None:
         return
     for i, item in enumerate(json.loads(manifest.read_text(encoding="utf-8"))):
         fname = item["file"]
-        if conn.execute("SELECT 1 FROM doc_template WHERE filename=?", (fname,)).fetchone():
+        # master_key never changes, even after staff replace the file, so a master is installed only once.
+        # Rows from before master_key existed are matched once by their original file name or name.
+        conn.execute("UPDATE doc_template SET master_key=? WHERE id=(SELECT id FROM doc_template WHERE is_master=1"
+                     " AND master_key IS NULL AND (filename=? OR name=?) ORDER BY id LIMIT 1)"
+                     " AND NOT EXISTS (SELECT 1 FROM doc_template WHERE master_key=?)",
+                     (fname, fname, item["name"], fname))
+        if conn.execute("SELECT 1 FROM doc_template WHERE master_key=?", (fname,)).fetchone():
             continue
         src = MASTERS_DIR / fname
         if not src.exists():
@@ -72,8 +78,9 @@ def install_masters(conn, templates_dir: Path) -> None:
         shutil.copy2(src, templates_dir / fname)
         check = render.check_template(src)
         tid = conn.execute(
-            "INSERT INTO doc_template (name, filename, is_master, sort_order, placeholders) VALUES (?,?,?,?,?)",
-            (item["name"], fname, 1, (i + 1) * 10, ",".join(sorted(check.used))),
+            "INSERT INTO doc_template (name, filename, is_master, master_key, sort_order, placeholders)"
+            " VALUES (?,?,?,?,?,?)",
+            (item["name"], fname, 1, fname, (i + 1) * 10, ",".join(sorted(check.used))),
         ).lastrowid
         for ct_name in item.get("case_types", []):
             ct = conn.execute("SELECT id FROM case_type WHERE name=?", (ct_name,)).fetchone()
@@ -219,7 +226,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
     def _save_scan(cid, upload):
         ext = Path(upload.filename).suffix.lower()
         if ext not in (".jpg", ".jpeg", ".png", ".pdf", ".tif", ".tiff", ".bmp", ".webp"):
-            flash("Сканът трябва да е снимка или PDF.", "error")
+            flash("Сканът не е записан: файлът трябва да е снимка (JPG, PNG) или PDF.", "error")
             return None
         name = f"candidate-{cid}-{datetime.now():%Y%m%d%H%M%S}{ext}"
         upload.save(Path(dbm.data_dir()) / "scans" / name)
@@ -425,7 +432,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
     def case_delete(case_id):
         _one('SELECT id FROM "case" WHERE id=?', case_id)
         if get_db().execute("SELECT 1 FROM generation WHERE case_id=?", (case_id,)).fetchone():
-            flash("Случаят има генерирани документи и не се изтрива (историята се пази).", "error")
+            flash("Случаят не се изтрива, защото има генерирани документи. Историята се пази.", "error")
             return redirect(url_for("case_view", case_id=case_id))
         get_db().execute('DELETE FROM "case" WHERE id=?', (case_id,))
         get_db().commit()
@@ -436,11 +443,11 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
     def case_generate(case_id):
         gen_id, errors = generate_case(case_id)
         if gen_id is None:
-            flash(errors[0] if errors else "Няма бланки за този вид случай.", "error")
+            flash(errors[0] if errors else "Нищо не е генерирано: няма бланки за този вид случай.", "error")
         elif errors:
-            flash("Генерирано с грешки: " + "; ".join(errors), "error")
+            flash("Част от документите не са готови: " + "; ".join(errors), "error")
         else:
-            flash("Документите са генерирани.", "ok")
+            flash("Документите са генерирани. Отворете ги по-долу, в „История на генерираните документи“.", "ok")
         return redirect(url_for("case_view", case_id=case_id))
 
     def generate_case(case_id):
@@ -465,9 +472,13 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                     for k, v in flatten(ctx).items()}
         gen_id = d.execute("INSERT INTO generation (case_id, folder, snapshot) VALUES (?,?,?)",
                            (case_id, rel.as_posix(), json.dumps(snapshot, ensure_ascii=False))).lastrowid
-        errors, made = [], []
+        errors, made, used_names = [], [], set()
         for t in tpls:
-            out = folder / "docx" / f"{_safe_name(t['name'])} - {_safe_name(c['name_cyr'])}.docx"
+            base = f"{_safe_name(t['name'])} - {_safe_name(c['name_cyr'])}"
+            if base.lower() in used_names:  # two templates with the same (sanitised) name
+                base = f"{base} ({t['id']})"
+            used_names.add(base.lower())
+            out = folder / "docx" / f"{base}.docx"
             try:
                 render.fill_docx(_template_path(t), ctx, out)
                 made.append((t, out))
@@ -478,9 +489,12 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         pdfs = {}
         if made:
             try:
-                pdfs = render.to_pdf([o for _, o in made], folder)
+                pdfs = render.to_pdf([o for _, o in made], folder)  # may be partial
             except Exception as exc:
                 errors.append(f"PDF: {exc}")
+            missing = [t["name"] for t, o in made if o not in pdfs]
+            if pdfs and missing:
+                errors.append("няма PDF за: " + ", ".join(missing))
         for t, out in made:
             pdf = pdfs.get(out)
             d.execute("INSERT INTO generated_file (generation_id, template_name, pdf_name, docx_name, error)"
@@ -545,8 +559,10 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                 return render_template("template_check.html", check=check, filename=upload.filename,
                                        placeholders=PLACEHOLDERS), 422
             stem = secure_filename(Path(upload.filename).stem) or "blanka"
-            fname = f"{datetime.now():%Y%m%d%H%M%S}-{stem}.docx"
-            shutil.copy2(p, Path(dbm.data_dir()) / "templates" / fname)
+            fname = f"{datetime.now():%Y%m%d%H%M%S}-{secrets.token_hex(4)}-{stem}.docx"
+            # exclusive create: never overwrite an existing template file
+            with open(p, "rb") as src, open(Path(dbm.data_dir()) / "templates" / fname, "xb") as dst:
+                shutil.copyfileobj(src, dst)
         d = get_db()
         if replace_id:
             old = _one("SELECT * FROM doc_template WHERE id=?", replace_id)
@@ -613,7 +629,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
             "residence_period": request.form.get("residence_period", "").strip(),
             "is_extension": 1 if request.form.get("is_extension") else 0,
         }, touch=False)
-        flash("Записано.", "ok")
+        flash("Видът случай е записан.", "ok")
         return redirect(url_for("case_types"))
 
     @app.route("/countries", methods=["GET", "POST"])
