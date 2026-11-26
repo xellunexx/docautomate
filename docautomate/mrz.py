@@ -117,6 +117,8 @@ def parse_mrz(text: str) -> MrzResult:
         res.given_names = given.replace("<", " ").strip()
     elif "<" in l1[5:]:  # fillers were read, so this is a name with a surname only (allowed by ICAO)
         res.surname = names.replace("<", " ").strip()
+        # can't tell from the MRZ alone whether << was misread inside the name, so ask for a check
+        res.warnings.append("В паспорта има само фамилия (без собствено име) – проверете името.")
     else:  # no '<' at all on line 1: fillers/separator misread (e.g. as K) - do not suggest a garbled name
         res.warnings.append("Името не е разчетено ясно – въведете го ръчно.")
 

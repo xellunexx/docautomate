@@ -111,4 +111,11 @@ def test_line_one_with_fillers_misread_as_k_and_noise_after():
 
 def test_surname_only_name_is_valid():
     r = mrz.parse_mrz(make_mrz(surname="IVANOV", given=""))
-    assert r.valid and r.surname == "IVANOV" and r.given_names == "" and not r.warnings, r.warnings
+    assert r.valid and r.surname == "IVANOV" and r.given_names == ""
+    assert any("само фамилия" in w for w in r.warnings)  # operator is asked to confirm
+
+
+def test_separator_misread_inside_name_asks_for_check():
+    l1, l2 = make_mrz().split("\n")
+    r = mrz.parse_mrz(l1.replace("IVANOV<<PETR", "IVANOVKKPETR") + "\n" + l2)
+    assert any("проверете името" in w for w in r.warnings)
