@@ -151,7 +151,8 @@ def parse_mrz(text: str) -> MrzResult:
         res.warnings.append("Датата на раждане не е разчетена.")
     if res.expiry_date is None:
         res.warnings.append("Датата на валидност не е разчетена.")
-    res.valid = ok and res.birth_date is not None and res.expiry_date is not None
+    res.valid = (ok and res.birth_date is not None and res.expiry_date is not None
+                 and bool(res.surname))  # no clean result without a readable name
     return res
 
 
