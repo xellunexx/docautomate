@@ -62,15 +62,24 @@ def install_masters(conn, templates_dir: Path) -> None:
     manifest = MASTERS_DIR / "manifest.json"
     if not manifest.exists():
         return
-    for i, item in enumerate(json.loads(manifest.read_text(encoding="utf-8"))):
+    items = json.loads(manifest.read_text(encoding="utf-8"))
+    # master_key never changes, even after staff replace the file, so a master is installed only once.
+    # Rows from before master_key existed are matched once by their original file name or name.
+    for item in items:
         fname = item["file"]
-        # master_key never changes, even after staff replace the file, so a master is installed only once.
-        # Rows from before master_key existed are matched once by their original file name or name.
         conn.execute("UPDATE doc_template SET master_key=? WHERE id=(SELECT id FROM doc_template WHERE is_master=1"
                      " AND master_key IS NULL AND (filename=? OR name=?) ORDER BY id LIMIT 1)"
                      " AND NOT EXISTS (SELECT 1 FROM doc_template WHERE master_key=?)",
                      (fname, fname, item["name"], fname))
+    # An old master whose file AND name were both changed cannot be matched. Rather than risk a second
+    # active copy, nothing more is installed while such a row exists (staff can upload a master by hand).
+    legacy_unmatched = conn.execute(
+        "SELECT count(*) FROM doc_template WHERE is_master=1 AND master_key IS NULL").fetchone()[0]
+    for i, item in enumerate(items):
+        fname = item["file"]
         if conn.execute("SELECT 1 FROM doc_template WHERE master_key=?", (fname,)).fetchone():
+            continue
+        if legacy_unmatched:
             continue
         src = MASTERS_DIR / fname
         if not src.exists():

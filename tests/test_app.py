@@ -233,6 +233,22 @@ def test_replaced_master_is_not_reinstalled(client, app):
     conn.close()
 
 
+def test_old_database_with_renamed_replaced_master_gets_no_duplicate(client, app):
+    from docautomate.app import create_app
+    conn = connect(Path(app.config["DATABASE"]))
+    # simulate a database from before master_key: one master replaced (new file) and renamed
+    conn.execute("UPDATE doc_template SET filename='20260101-x-mine.docx', name='Моята обосновка'"
+                 " WHERE master_key='obosnovka.docx'")
+    conn.execute("UPDATE doc_template SET master_key=NULL")
+    conn.commit()
+    create_app(data_dir=Path(app.config["DATA_DIR"]), testing=True)  # restart = migration + install
+    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == 6
+    assert conn.execute("SELECT count(*) FROM doc_template WHERE master_key IS NOT NULL").fetchone()[0] == 5
+    create_app(data_dir=Path(app.config["DATA_DIR"]), testing=True)  # stays stable on later starts
+    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == 6
+    conn.close()
+
+
 def test_same_template_names_do_not_overwrite_and_partial_pdf_kept(client, app, monkeypatch):
     from docautomate import render
     eid, pid, cid, case_id = _setup_case(client, app)
