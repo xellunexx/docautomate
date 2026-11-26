@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Бланки{% endblock %}
+{% block body %}
+<div class="head-row"><h1>Бланки</h1><a class="btn" href="{{ url_for('placeholders') }}">Списък на полетата {{ '{{…}}' }}</a></div>
+<p class="help">Отметнете за кои видове случаи се генерира всяка бланка. Ако смените бланка, старите генерирани PDF остават непроменени.</p>
+{% if rows %}
+<table class="list tpl-table">
+  <thead><tr><th>Бланка</th>{% for t in types %}<th class="center">{{ t.name }}</th>{% endfor %}<th class="center">Активна</th><th class="num">Ред</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr class="{{ 'inactive' if not r.is_active }}">
+    <td>
+      <form method="post" action="{{ url_for('template_settings', tid=r.id) }}" id="tf-{{ r.id }}"></form>
+      <input form="tf-{{ r.id }}" name="name" value="{{ r.name }}" aria-label="Име на бланката" class="name-input">
+      <div class="small muted">{{ 'основна бланка' if r.is_master else 'качена' }} · {{ r.uploaded_at[:10]|bgdate }} · {{ r.placeholders.split(',')|select|list|length }} полета ·
+        <a href="{{ url_for('template_download', tid=r.id) }}">свали .docx</a></div>
+    </td>
+    {% for t in types %}<td class="center"><input form="tf-{{ r.id }}" type="checkbox" name="case_types" value="{{ t.id }}" {{ 'checked' if (t.id, r.id) in links }} aria-label="{{ t.name }}"></td>{% endfor %}
+    <td class="center"><input form="tf-{{ r.id }}" type="checkbox" name="is_active" value="1" {{ 'checked' if r.is_active }} aria-label="Активна"></td>
+    <td class="num"><input form="tf-{{ r.id }}" name="sort_order" value="{{ r.sort_order }}" size="3" aria-label="Подредба"></td>
+    <td><button form="tf-{{ r.id }}" class="btn small">Запиши</button></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="empty">Няма бланки.</p>{% endif %}
+
+<section class="panel">
+  <h2>Качи нова бланка или замени съществуваща</h2>
+  <ol class="help">
+    <li>Отворете попълнен документ в Word и запишете копие като <b>.docx</b>.</li>
+    <li>Заменете данните с полета, например <code>{{ '{{ candidate.name_cyr }}' }}</code>, <code>{{ '{{ employer.eik }}' }}</code>. Пълният списък е в <a href="{{ url_for('placeholders') }}">Списък на полетата</a>.</li>
+    <li>Качете файла тук. Програмата проверява всяко поле и показва грешките, преди да запише бланката.</li>
+  </ol>
+  <form method="post" action="{{ url_for('template_upload') }}" enctype="multipart/form-data" class="grid-form">
+    <div class="field"><label for="u-file">Word файл (.docx)</label><input type="file" id="u-file" name="file" accept=".docx" required></div>
+    <div class="field"><label for="u-name">Име на бланката</label><input id="u-name" name="name" placeholder="напр. Трудов договор"></div>
+    <div class="field"><label for="u-replace">Замени съществуваща</label>
+      <select id="u-replace" name="replace_id"><option value="">— не, нова бланка —</option>
+      {% for r in rows %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></div>
+    <div class="field wide"><span class="label">За видове случаи (за нова бланка)</span>
+      {% for t in types %}<label class="check"><input type="checkbox" name="case_types" value="{{ t.id }}"> {{ t.name }}</label>{% endfor %}</div>
+    <div class="form-actions"><button class="btn primary">Провери и качи</button></div>
+  </form>
+</section>
+{% endblock %}

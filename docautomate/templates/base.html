@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Docautomate{% endblock %} · Docautomate</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="{{ url_for('home') }}">Docautomate</a>
+  <nav>
+    {% set ep = request.endpoint or '' %}
+    <a href="{{ url_for('cases') }}" class="{{ 'on' if ep.startswith('case') and ep != 'case_types' }}">Случаи</a>
+    <a href="{{ url_for('candidates') }}" class="{{ 'on' if ep.startswith('candidate') }}">Кандидати</a>
+    <a href="{{ url_for('employers') }}" class="{{ 'on' if ep.startswith('employer') or ep == 'position' }}">Работодатели</a>
+    <a href="{{ url_for('templates') }}" class="{{ 'on' if ep.startswith('template') or ep == 'placeholders' }}">Бланки</a>
+    <span class="sep"></span>
+    <a href="{{ url_for('case_types') }}" class="minor {{ 'on' if ep == 'case_types' }}">Видове случаи</a>
+    <a href="{{ url_for('countries') }}" class="minor {{ 'on' if ep == 'countries' }}">Държави</a>
+    <a href="{{ url_for('import_page') }}" class="minor {{ 'on' if ep == 'import_page' }}">Импорт</a>
+  </nav>
+</header>
+<main>
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, m in msgs %}<div class="flash {{ cat }}" role="status">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  {% block body %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

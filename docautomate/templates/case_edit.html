@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import field, error_box %}
+{% block title %}{{ 'Редакция на случай' if row else 'Нов случай' }}{% endblock %}
+{% block body %}
+<p class="crumbs"><a href="{{ url_for('cases') }}">Случаи</a> /</p>
+<h1>{{ 'Редакция на случай' if row else ('Нов случай – копие на случай №' ~ copy_id if copy_id else 'Нов случай') }}</h1>
+{% if copy_id and not row %}<p class="help">Условията са копирани. Изберете кандидата и проверете полетата. Старият случай и документите му не се променят.</p>{% endif %}
+{{ error_box(errors) }}
+<form method="post" class="grid-form" id="case-form">
+  <fieldset class="wide">
+    <legend>Кой, при кого, какво</legend>
+    <div class="grid-form inner">
+      <div class="field {{ 'has-error' if errors.get('Кандидат') }}">
+        <label for="f-candidate">Кандидат <span class="req">*</span></label>
+        <input list="cand-list" id="cand-search" placeholder="Пишете име или паспорт…" autocomplete="off" aria-label="Търсене на кандидат">
+        <select id="f-candidate" name="candidate_id" required>
+          <option value="">—</option>
+          {% for c in candidates %}<option value="{{ c.id }}" {{ 'selected' if values.candidate_id|string == c.id|string }}>{{ c.name_cyr or c.name_lat }}{{ ' · ' ~ c.passport_no if c.passport_no }}</option>{% endfor %}
+        </select>
+        <p class="help"><a href="{{ url_for('candidate') }}" target="_blank">+ нов кандидат</a></p>
+      </div>
+      <div class="field {{ 'has-error' if errors.get('Работодател') }}">
+        <label for="f-employer">Работодател <span class="req">*</span></label>
+        <select id="f-employer" name="employer_id" required>
+          <option value="">—</option>
+          {% for e in employers %}<option value="{{ e.id }}" {{ 'selected' if values.employer_id|string == e.id|string }}>{{ e.name }}</option>{% endfor %}
+        </select>
+        <p class="help"><a href="{{ url_for('employer') }}" target="_blank">+ нов работодател</a></p>
+      </div>
+      <div class="field {{ 'has-error' if errors.get('position_id') }}">
+        <label for="f-position">Длъжност</label>
+        <select id="f-position" name="position_id">
+          <option value="">—</option>
+          {% for p in positions %}<option value="{{ p.id }}" data-employer="{{ p.employer_id }}" {{ 'selected' if values.position_id|string == p.id|string }}>{{ p.title }}{{ ' (' ~ p.nkpd ~ ')' if p.nkpd }}</option>{% endfor %}
+        </select>
+        {% if errors.get('position_id') %}<p class="err">{{ errors.position_id }}</p>{% else %}<p class="help">Показват се длъжностите на избрания работодател.</p>{% endif %}
+      </div>
+      <div class="field {{ 'has-error' if errors.get('Вид случай') }}">
+        <label for="f-ctype">Вид случай <span class="req">*</span></label>
+        <select id="f-ctype" name="case_type_id" required>
+          {% for t in case_types %}<option value="{{ t.id }}" {{ 'selected' if values.case_type_id|string == t.id|string }}>{{ t.name }}</option>{% endfor %}
+        </select>
+        <p class="help">Определя кои бланки се генерират.</p>
+      </div>
+    </div>
+  </fieldset>
+  <fieldset class="wide">
+    <legend>Условия по договора и данни за заявлението</legend>
+    <div class="grid-form inner">
+      {% for f in fields %}{{ field(f, values, errors) }}{% endfor %}
+    </div>
+  </fieldset>
+  <div class="form-actions"><button class="btn primary">Запиши</button></div>
+</form>
+{% if row %}
+<form method="post" action="{{ url_for('case_delete', case_id=row.id) }}" class="danger-zone" onsubmit="return confirm('Да изтрия ли случая?')">
+  <button class="btn danger">Изтрий случая</button> <span class="help">Само ако още няма генерирани документи.</span>
+</form>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const emp = document.getElementById('f-employer'), pos = document.getElementById('f-position');
+  function filter() {
+    for (const o of pos.options) {
+      if (!o.value) continue;
+      const show = o.dataset.employer === emp.value;
+      o.hidden = !show; o.disabled = !show;
+      if (!show && o.selected) pos.value = '';
+    }
+  }
+  emp.addEventListener('change', filter); filter();
+  // quick search in the candidate list
+  const search = document.getElementById('cand-search'), sel = document.getElementById('f-candidate');
+  search.addEventListener('input', () => {
+    const q = search.value.toLowerCase();
+    let first = null;
+    for (const o of sel.options) {
+      if (!o.value) continue;
+      const m = o.text.toLowerCase().includes(q);
+      o.hidden = !m;
+      if (m && !first) first = o;
+    }
+    if (first && q) sel.value = first.value;
+  });
+})();
+</script>
+{% endblock %}

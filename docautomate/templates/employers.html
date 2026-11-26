@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Работодатели{% endblock %}
+{% block body %}
+<div class="head-row"><h1>Работодатели</h1><a class="btn primary" href="{{ url_for('employer') }}">+ Нов работодател</a></div>
+{% if rows %}
+<table class="list">
+  <thead><tr><th>Фирма</th><th>ЕИК</th><th>Представляващ</th><th class="num">Длъжности</th><th class="num">Случаи</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><a href="{{ url_for('employer', eid=r.id) }}">{{ r.name }}</a>
+      {% if not r.eik or not r.address or not r.rep_name %}<span class="tag warn" title="Липсват данни, нужни за документите">непълен</span>{% endif %}</td>
+    <td>{{ r.eik }}</td><td>{{ r.rep_name }}</td><td class="num">{{ r.npos }}</td><td class="num">{{ r.ncases }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="empty">Още няма работодатели.</p>{% endif %}
+{% endblock %}

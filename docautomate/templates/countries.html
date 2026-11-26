@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Държави{% endblock %}
+{% block body %}
+<h1>Държави</h1>
+<p class="help">Формите се ползват в бланките: „гражданин на <b>Република Узбекистан</b>“, на руски „гражданин <b>Республики Узбекистан</b>“, „выдан <b>Республикой Узбекистан</b>“.</p>
+<table class="list">
+  <thead><tr>{% for f in fields %}<th>{{ f.label }}</th>{% endfor %}<th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    {% for f in fields %}<td>{% if loop.first %}<form method="post" id="co-{{ r.id }}"><input type="hidden" name="id" value="{{ r.id }}"></form>{% endif %}
+      <input form="co-{{ r.id }}" name="{{ f.name }}" value="{{ r[f.name] or '' }}" aria-label="{{ f.label }}" size="{{ 4 if f.name == 'iso3' else 18 }}"></td>{% endfor %}
+    <td><button form="co-{{ r.id }}" class="btn small">Запиши</button></td>
+  </tr>
+  {% endfor %}
+  <tr>
+    {% for f in fields %}<td>{% if loop.first %}<form method="post" id="co-new"></form>{% endif %}<input form="co-new" name="{{ f.name }}" placeholder="{{ 'нова държава' if loop.first }}" aria-label="{{ f.label }}" size="{{ 4 if f.name == 'iso3' else 18 }}"></td>{% endfor %}
+    <td><button form="co-new" class="btn small primary">Добави</button></td>
+  </tr>
+  </tbody>
+</table>
+{% endblock %}

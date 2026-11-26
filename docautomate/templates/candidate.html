@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import field, error_box %}
+{% block title %}{{ row.name_cyr if row else 'Нов кандидат' }}{% endblock %}
+{% block body %}
+<p class="crumbs"><a href="{{ url_for('candidates') }}">Кандидати</a> /</p>
+<div class="head-row">
+  <h1>{{ row.name_cyr if row else 'Нов кандидат' }}</h1>
+  {% if row %}<a class="btn primary" href="{{ url_for('case_edit', candidate_id=row.id) }}">+ Нов случай за кандидата</a>{% endif %}
+</div>
+{{ error_box(errors) }}
+
+<section class="panel mrz" id="mrz-panel">
+  <h2>Данни от паспорта</h2>
+  <p class="help">Качете снимка или PDF на страницата със снимката. Програмата разчита двата реда с <code>&lt;&lt;&lt;</code> отдолу и попълва полетата. <b>Проверете ги</b> преди запис. Датата на издаване не е в този ред и се въвежда ръчно.</p>
+  <div class="mrz-row">
+    <input type="file" id="mrz-file" accept="image/*,.pdf" aria-label="Скан на паспорта">
+    <button type="button" class="btn" id="mrz-read" {{ 'disabled' if not ocr }}>Разчети скана</button>
+    <span class="muted">или</span>
+    <button type="button" class="btn link" id="mrz-toggle">поставете двата реда ръчно</button>
+  </div>
+  {% if not ocr %}<p class="help">Разчитането не е инсталирано на този компютър (виж README). Може да поставите редовете ръчно.</p>{% endif %}
+  <div id="mrz-text-box" hidden>
+    <textarea id="mrz-text" rows="2" class="mono" placeholder="P&lt;UZBIVANOV&lt;&lt;PETR&lt;&lt;&lt;&lt;&lt;…&#10;AB1234567…"></textarea>
+    <button type="button" class="btn" id="mrz-parse">Разчети текста</button>
+  </div>
+  <div id="mrz-result" role="status" aria-live="polite"></div>
+</section>
+
+<form method="post" enctype="multipart/form-data" class="grid-form" id="cand-form">
+  {% for f in fields %}{{ field(f, values, errors, countries) }}{% endfor %}
+  <div class="field wide">
+    <label for="f-scan">Скан на паспорта (запазва се към кандидата)</label>
+    <input type="file" id="f-scan" name="passport_scan" accept="image/*,.pdf">
+    {% if row and row.passport_scan %}<p class="help"><a href="{{ url_for('candidate_scan', cid=row.id) }}" target="_blank">Отвори записания скан</a></p>{% endif %}
+  </div>
+  <div class="form-actions"><button class="btn primary">Запиши</button></div>
+</form>
+
+{% if row %}
+<h2>Случаи</h2>
+{% if cases %}
+<table class="list"><thead><tr><th>Вид</th><th>Работодател</th><th>Създаден</th><th></th></tr></thead><tbody>
+{% for c in cases %}<tr><td><a href="{{ url_for('case_view', case_id=c.id) }}">{{ c.ctype }}</a></td><td>{{ c.employer }}</td><td class="muted">{{ c.created_at[:10]|bgdate }}</td>
+<td><a href="{{ url_for('case_edit', copy=c.id, candidate_id=row.id) }}" title="Нов случай със същите условия (напр. удължаване)">Копирай</a></td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">Няма случаи.</p>{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const out = document.getElementById('mrz-result');
+  const labels = {name_lat: 'Латиница', passport_no: 'Паспорт №', gender: 'Пол', birth_date: 'Роден',
+                  passport_expiry: 'Валиден до', citizenship_id: 'Гражданство', passport_issued_by: 'Издаден от'};
+  function show(msg, cls) { out.className = 'mrz-out ' + (cls || ''); out.textContent = msg; }
+  function apply(data) {
+    const filled = [], changed = [];
+    for (const [k, v] of Object.entries(data.fields)) {
+      if (v === '' || v === null) continue;
+      const el = document.getElementById('f-' + k);
+      if (!el) continue;
+      if (el.value && el.value !== String(v)) changed.push(labels[k] + ': „' + (el.selectedOptions ? el.selectedOptions[0].text : el.value) + '“ → „' + (el.tagName === 'SELECT' ? (el.querySelector('option[value="' + v + '"]') || {}).text : v) + '“');
+      el.value = v;
+      el.classList.add('from-mrz');
+      filled.push(labels[k]);
+    }
+    let msg = (data.valid ? 'Разчетено, контролните цифри съвпадат. ' : 'Разчетено с предупреждения. ') +
+              'Попълнени: ' + filled.join(', ') + '.';
+    if (changed.length) msg += ' Променени: ' + changed.join('; ') + '.';
+    if (data.warnings.length) msg += ' ' + data.warnings.join(' ');
+    if (!data.fields.citizenship_id && data.nationality) msg += ' Гражданство „' + data.nationality + '“ не е в списъка с държави.';
+    msg += ' Проверете полетата и натиснете „Запиши“.';
+    show(msg, data.valid ? 'ok' : 'warn');
+  }
+  async function send(body) {
+    show('Разчитане…');
+    try {
+      const r = await fetch('{{ url_for("mrz_read") }}', {method: 'POST', body});
+      const data = await r.json();
+      if (!r.ok) return show(data.error || 'Грешка', 'error');
+      apply(data);
+    } catch (e) { show('Грешка при връзката: ' + e, 'error'); }
+  }
+  document.getElementById('mrz-read').addEventListener('click', () => {
+    const f = document.getElementById('mrz-file').files[0];
+    if (!f) return show('Изберете файл.', 'error');
+    const fd = new FormData(); fd.append('scan', f); send(fd);
+  });
+  document.getElementById('mrz-toggle').addEventListener('click', () => {
+    const b = document.getElementById('mrz-text-box'); b.hidden = !b.hidden;
+  });
+  document.getElementById('mrz-parse').addEventListener('click', () => {
+    const fd = new FormData(); fd.append('mrz_text', document.getElementById('mrz-text').value); send(fd);
+  });
+})();
+</script>
+{% endblock %}

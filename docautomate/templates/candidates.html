@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Кандидати{% endblock %}
+{% block body %}
+<div class="head-row">
+  <h1>Кандидати</h1>
+  <form class="search" method="get"><input name="q" value="{{ q }}" placeholder="Име, паспорт, телефон" aria-label="Търсене"><button class="btn">Търси</button></form>
+  <a class="btn primary" href="{{ url_for('candidate') }}">+ Нов кандидат</a>
+</div>
+{% if rows %}
+<table class="list">
+  <thead><tr><th>Имена</th><th>Латиница</th><th>Паспорт</th><th>Гражданство</th><th>Роден</th><th>Статус</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><a href="{{ url_for('candidate', cid=r.id) }}">{{ r.name_cyr or '(без име)' }}</a></td>
+    <td>{{ r.name_lat }}</td><td>{{ r.passport_no }}</td><td>{{ r.citizenship or '' }}</td>
+    <td>{{ r.birth_date|bgdate }}</td><td class="muted">{{ r.status }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if rows|length == 500 %}<p class="muted small">Показани са първите 500. Използвайте търсенето.</p>{% endif %}
+{% else %}
+<p class="empty">{{ 'Няма резултати.' if q else 'Още няма кандидати.' }}</p>
+{% endif %}
+{% endblock %}

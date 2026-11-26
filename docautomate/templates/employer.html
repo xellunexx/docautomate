@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import field, error_box %}
+{% block title %}{{ row.name if row else 'Нов работодател' }}{% endblock %}
+{% block body %}
+<p class="crumbs"><a href="{{ url_for('employers') }}">Работодатели</a> /</p>
+<div class="head-row">
+  <h1>{{ row.name if row else 'Нов работодател' }}</h1>
+  {% if row %}<a class="btn primary" href="{{ url_for('case_edit', employer_id=row.id) }}">+ Нов случай</a>{% endif %}
+</div>
+<p class="help">Въвежда се веднъж. Данните отиват във всички бланки на всички кандидати при този работодател.</p>
+{{ error_box(errors) }}
+<form method="post" class="grid-form">
+  {% for f in fields %}{{ field(f, values, errors) }}{% endfor %}
+  <div class="form-actions"><button class="btn primary">Запиши</button></div>
+</form>
+{% if row %}
+<div class="head-row"><h2>Длъжности и обекти</h2><a class="btn" href="{{ url_for('position', eid=row.id) }}">+ Нова длъжност</a></div>
+<p class="help">Всяка длъжност пази код по НКПД, място на работа, текста на обосновката и длъжностната характеристика.</p>
+{% if positions %}
+<table class="list"><thead><tr><th>Длъжност</th><th>НКПД</th><th>Място на работа</th><th>Текстове</th></tr></thead><tbody>
+{% for p in positions %}
+<tr><td><a href="{{ url_for('position', pid=p.id) }}">{{ p.title }}</a></td><td>{{ p.nkpd }}</td><td>{{ p.workplace|truncate(70) }}</td>
+<td>{% if p.obosnovka %}<span class="tag">обосновка</span>{% else %}<span class="tag warn">без обосновка</span>{% endif %}
+{% if p.dh_duties %}<span class="tag">ДХ</span>{% else %}<span class="tag warn">без ДХ</span>{% endif %}</td></tr>
+{% endfor %}</tbody></table>
+{% else %}<p class="empty">Няма длъжности.</p>{% endif %}
+{% endif %}
+{% endblock %}

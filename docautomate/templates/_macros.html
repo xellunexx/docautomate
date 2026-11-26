@@ -1,0 +1,31 @@
+{% macro field(f, values, errors, countries=None) -%}
+{% set v = values.get(f.name) if values.get(f.name) is not none else '' %}
+<div class="field {{ 'wide' if f.wide or f.kind == 'textarea' }} {{ 'has-error' if errors.get(f.name) }}">
+  <label for="f-{{ f.name }}">{{ f.label }}{% if f.required %} <span class="req" aria-label="задължително">*</span>{% endif %}</label>
+  {% if f.kind == 'textarea' %}
+    <textarea id="f-{{ f.name }}" name="{{ f.name }}" rows="{{ 8 if f.name.startswith(('dh_', 'obosnovka')) else 3 }}">{{ v }}</textarea>
+  {% elif f.kind == 'gender' %}
+    <select id="f-{{ f.name }}" name="{{ f.name }}">
+      {% for val, lbl in [('', '—'), ('M', 'мъж'), ('F', 'жена')] %}<option value="{{ val }}" {{ 'selected' if v == val }}>{{ lbl }}</option>{% endfor %}
+    </select>
+  {% elif f.kind == 'country' %}
+    <select id="f-{{ f.name }}" name="{{ f.name }}">
+      <option value="">—</option>
+      {% for c in countries %}<option value="{{ c.id }}" {{ 'selected' if v|string == c.id|string }}>{{ c.name }}</option>{% endfor %}
+    </select>
+  {% elif f.kind == 'bool' %}
+    <label class="check"><input type="checkbox" id="f-{{ f.name }}" name="{{ f.name }}" value="1" {{ 'checked' if v in (1, '1', 'on', True) }}> Да</label>
+  {% elif f.kind == 'date' %}
+    <input id="f-{{ f.name }}" name="{{ f.name }}" value="{{ v|bgdate }}" placeholder="дд.мм.гггг" inputmode="numeric" autocomplete="off">
+  {% elif f.kind == 'int' %}
+    <input id="f-{{ f.name }}" name="{{ f.name }}" value="{{ v }}" inputmode="numeric">
+  {% else %}
+    <input id="f-{{ f.name }}" name="{{ f.name }}" value="{{ v }}" type="{{ 'email' if f.kind == 'email' else 'text' }}" {{ 'required' if f.required }}>
+  {% endif %}
+  {% if errors.get(f.name) %}<p class="err">{{ errors[f.name] }}</p>{% elif f.help %}<p class="help">{{ f.help }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro error_box(errors) -%}
+{% if errors %}<div class="flash error" role="alert">Поправете полетата, отбелязани в червено ({{ errors|length }}).</div>{% endif %}
+{%- endmacro %}

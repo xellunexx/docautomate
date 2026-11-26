@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Случаи{% endblock %}
+{% block body %}
+<div class="head-row">
+  <h1>Случаи</h1>
+  <form class="search" method="get"><input name="q" value="{{ q }}" placeholder="Кандидат, фирма, паспорт" aria-label="Търсене"><button class="btn">Търси</button></form>
+  <a class="btn primary" href="{{ url_for('case_edit') }}">+ Нов случай</a>
+</div>
+{% if rows %}
+<table class="list">
+  <thead><tr><th>Кандидат</th><th>Работодател</th><th>Длъжност</th><th>Вид</th><th>Документи</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><a href="{{ url_for('case_view', case_id=r.id) }}">{{ r.name_cyr }}</a></td>
+    <td>{{ r.employer }}</td><td>{{ r.position or '—' }}</td><td>{{ r.ctype }}</td>
+    <td class="muted">{{ r.last_gen[:16]|replace('-', '.') if r.last_gen else 'не са генерирани' }}</td>
+    <td><a href="{{ url_for('case_edit', copy=r.id) }}">Копирай</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="empty">{{ 'Няма резултати.' if q else 'Още няма случаи.' }}</p>{% endif %}
+{% endblock %}

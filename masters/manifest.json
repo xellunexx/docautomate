@@ -1,0 +1,14 @@
+[
+  {"file": "zayavlenie-prilozhenie-3a.docx", "name": "Заявление (Приложение № 3а)",
+   "case_types": ["Единно разрешение – 3 години (чл. 24и)"]},
+  {"file": "kontrolen-list.docx", "name": "Контролен лист",
+   "case_types": ["Единно разрешение – 3 години (чл. 24и)"]},
+  {"file": "trudov-dogovor-bg-ru.docx", "name": "Трудов договор (BG/RU)",
+   "case_types": ["Единно разрешение – 3 години (чл. 24и)"]},
+  {"file": "deklaracia-usloviya-na-trud.docx", "name": "Декларация за условия на труд",
+   "case_types": ["Единно разрешение – 3 години (чл. 24и)"]},
+  {"file": "obosnovka.docx", "name": "Обосновка",
+   "case_types": ["Единно разрешение – 3 години (чл. 24и)", "Виза 3 месеца", "Удължаване"]},
+  {"file": "dlazhnostna-harakteristika.docx", "name": "Длъжностна характеристика",
+   "case_types": ["Единно разрешение – 3 години (чл. 24и)", "Виза 3 месеца", "Удължаване"]}
+]

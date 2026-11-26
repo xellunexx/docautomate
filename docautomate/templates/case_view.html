@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}{{ c.name_cyr }} – {{ c.ctype }}{% endblock %}
+{% block body %}
+<p class="crumbs"><a href="{{ url_for('cases') }}">Случаи</a> /</p>
+<div class="head-row">
+  <h1>{{ c.name_cyr }}</h1>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('case_edit', case_id=c.id) }}">Редактирай</a>
+    <a class="btn" href="{{ url_for('case_edit', copy=c.id) }}" title="Същите условия, друг кандидат или удължаване">Копирай като нов</a>
+  </div>
+</div>
+<dl class="facts">
+  <div><dt>Вид</dt><dd>{{ c.ctype }}</dd></div>
+  <div><dt>Работодател</dt><dd><a href="{{ url_for('employer', eid=c.employer_id) }}">{{ c.employer }}</a></dd></div>
+  <div><dt>Длъжност</dt><dd>{% if c.position_id %}<a href="{{ url_for('position', pid=c.position_id) }}">{{ c.position }}</a>{% else %}<span class="warn-text">не е избрана</span>{% endif %}</dd></div>
+  <div><dt>Кандидат</dt><dd><a href="{{ url_for('candidate', cid=c.candidate_id) }}">{{ c.name_lat or c.name_cyr }}</a></dd></div>
+  {% if c.copied_from_id %}<div><dt>Копие на</dt><dd><a href="{{ url_for('case_view', case_id=c.copied_from_id) }}">случай №{{ c.copied_from_id }}</a></dd></div>{% endif %}
+</dl>
+
+<section class="panel">
+  <div class="head-row"><h2>Документи за генериране</h2>
+    <form method="post" action="{{ url_for('case_generate', case_id=c.id) }}">
+      <button class="btn primary" {{ 'disabled' if not tpls }}>Генерирай PDF</button>
+    </form>
+  </div>
+  {% if not pdf %}<p class="flash error">Няма програма за PDF (LibreOffice или Word). Ще се направят само Word файлове.</p>{% endif %}
+  {% if tpls %}
+  <ul class="tpl-list">
+  {% for item in tpls %}
+    <li>
+      <b>{{ item.t.name }}</b>
+      {% if item.missing %}
+        <span class="tag warn">{{ item.missing|length }} празни полета</span>
+        <details><summary>Кои?</summary><p class="small">{% for k, label in item.missing %}{{ label }}{{ ', ' if not loop.last }}{% endfor %}</p>
+        <p class="help">Празните полета излизат като „……“ за попълване на ръка. Попълнете ги в кандидата, работодателя, длъжността или случая, ако трябва да са напечатани.</p></details>
+      {% else %}<span class="tag ok">всичко е попълнено</span>{% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">Няма бланки за „{{ c.ctype }}“. Отметнете ги в <a href="{{ url_for('templates') }}">Бланки</a>.</p>
+  {% endif %}
+</section>
+
+<h2>История на генерираните документи</h2>
+{% if gens %}
+{% for g in gens %}
+<section class="gen">
+  <div class="head-row"><h3>{{ g.created_at[:16]|bgdate }} {{ g.created_at[11:16] }}</h3>
+    {% if files[g.id]|selectattr('pdf_name')|list %}<a class="btn" href="{{ url_for('generated_zip', gen_id=g.id) }}">Свали всички PDF (zip)</a>{% endif %}</div>
+  <ul class="files">
+  {% for f in files[g.id] %}
+    <li>{% if f.pdf_name %}<a href="{{ url_for('generated_file', gen_id=g.id, name=f.pdf_name) }}" target="_blank">{{ f.template_name }} (PDF)</a>{% else %}{{ f.template_name }}{% endif %}
+      {% if f.docx_name %} · <a href="{{ url_for('generated_file', gen_id=g.id, name=f.docx_name, dl=1) }}">Word</a>{% endif %}
+      {% if f.error %} <span class="tag warn">{{ f.error }}</span>{% endif %}</li>
+  {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+{% else %}<p class="empty">Още не са генерирани документи. Всяко генериране се пази тук с дата, старите не се изтриват.</p>{% endif %}
+{% endblock %}

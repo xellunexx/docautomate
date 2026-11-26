@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Начало{% endblock %}
+{% block body %}
+<div class="head-row">
+  <h1>Начало</h1>
+  <div class="actions">
+    <a class="btn primary" href="{{ url_for('case_edit') }}">+ Нов случай</a>
+    <a class="btn" href="{{ url_for('candidate') }}">+ Нов кандидат</a>
+  </div>
+</div>
+{% if not pdf %}
+<div class="flash error">Няма програма за PDF. Инсталирайте безплатния <b>LibreOffice</b> (libreoffice.org) и рестартирайте приложението. Дотогава се правят само Word файлове.</div>
+{% endif %}
+<section class="stats">
+  <a href="{{ url_for('cases') }}"><b>{{ counts['case'] }}</b><span>случая</span></a>
+  <a href="{{ url_for('candidates') }}"><b>{{ counts['candidate'] }}</b><span>кандидати</span></a>
+  <a href="{{ url_for('employers') }}"><b>{{ counts['employer'] }}</b><span>работодатели</span></a>
+  <div><b>{{ counts['generation'] }}</b><span>генерирани комплекта</span></div>
+</section>
+<h2>Последни случаи</h2>
+{% if recent %}
+<table class="list">
+  <thead><tr><th>Кандидат</th><th>Работодател</th><th>Вид</th><th>Променен</th></tr></thead>
+  <tbody>
+  {% for r in recent %}
+    <tr><td><a href="{{ url_for('case_view', case_id=r.id) }}">{{ r.name_cyr }}</a></td><td>{{ r.employer }}</td><td>{{ r.ctype }}</td><td class="muted">{{ r.updated_at[:16] }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">Още няма случаи. Започнете с <a href="{{ url_for('employer') }}">работодател</a>, после <a href="{{ url_for('candidate') }}">кандидат</a> и <a href="{{ url_for('case_edit') }}">случай</a>. Или <a href="{{ url_for('import_page') }}">импортирайте</a> кандидатите от Airtable.</p>
+{% endif %}
+<p class="muted small">PDF: {{ pdf or 'няма' }} · Разчитане на паспорт: {{ 'да' if ocr else 'не е инсталирано (само ръчно въвеждане)' }}</p>
+{% endblock %}

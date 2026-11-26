@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Видове случаи{% endblock %}
+{% block body %}
+<h1>Видове случаи</h1>
+<p class="help">Видът случай избира комплекта бланки (отметките са в <a href="{{ url_for('templates') }}">Бланки</a>).</p>
+<table class="list">
+  <thead><tr><th>Име</th><th>Основание</th><th>Срок на пребиваване</th><th class="center">Удължаване</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><form method="post" action="{{ url_for('case_type_save', ctid=r.id) }}" id="ct-{{ r.id }}"></form>
+      <input form="ct-{{ r.id }}" name="name" value="{{ r.name }}" class="name-input" aria-label="Име"></td>
+    <td><input form="ct-{{ r.id }}" name="legal_ground" value="{{ r.legal_ground }}" size="6" aria-label="Основание"></td>
+    <td><input form="ct-{{ r.id }}" name="residence_period" value="{{ r.residence_period }}" size="10" aria-label="Срок"></td>
+    <td class="center"><input form="ct-{{ r.id }}" type="checkbox" name="is_extension" value="1" {{ 'checked' if r.is_extension }} aria-label="Удължаване"></td>
+    <td><button form="ct-{{ r.id }}" class="btn small">Запиши</button></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<section class="panel">
+  <h2>Нов вид случай</h2>
+  <form method="post" class="grid-form">
+    <div class="field"><label for="n-name">Име</label><input id="n-name" name="name" required></div>
+    <div class="field"><label for="n-g">Основание</label><input id="n-g" name="legal_ground"></div>
+    <div class="field"><label for="n-p">Срок на пребиваване</label><input id="n-p" name="residence_period"></div>
+    <div class="field"><label class="check"><input type="checkbox" name="is_extension" value="1"> Удължаване</label></div>
+    <div class="form-actions"><button class="btn primary">Добави</button></div>
+  </form>
+</section>
+{% endblock %}
