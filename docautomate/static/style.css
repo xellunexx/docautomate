@@ -262,6 +262,8 @@ details summary { cursor: pointer; color: var(--accent); font-size: .88rem; disp
 .mrz-out.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn-line); }
 .mrz-out.error { background: var(--err-bg); color: var(--err); border-color: var(--err-line); }
 .from-mrz { background: #fffbe8; border-color: #e8cf7a; }
+.ai-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+#ai-out[hidden] { display: none; }
 
 /* ---------------------------------------------------------------- templates */
 .problems li { margin: 4px 0; }

@@ -3,7 +3,8 @@ import argparse
 import threading
 import webbrowser
 
-from .app import create_app
+from . import ai_text
+from .app import ROOT, create_app
 
 
 def main():
@@ -12,6 +13,7 @@ def main():
     p.add_argument("--host", default="127.0.0.1", help="127.0.0.1 = само този компютър")
     p.add_argument("--no-browser", action="store_true")
     args = p.parse_args()
+    ai_text.load_dotenv(ROOT / ".env")  # local secrets such as ANTHROPIC_API_KEY (never committed)
     app = create_app()
     host = args.host
     if host in ("0.0.0.0", "", "::"):

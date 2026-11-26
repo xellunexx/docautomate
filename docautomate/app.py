@@ -17,7 +17,7 @@ from flask import (Flask, abort, flash, jsonify, redirect, render_template, requ
 from werkzeug.utils import secure_filename
 
 from . import db as dbm
-from . import auth, dashboard, forms, mailer, mrz, render
+from . import ai_text, auth, dashboard, forms, mailer, mrz, render
 from . import schedule as sched
 from .grammar import parse_date
 from .context import LIST_FIELDS, PLACEHOLDERS, build_context, flatten, missing_fields
@@ -841,7 +841,20 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
             "SELECT p.id, p.title, e.name AS employer FROM position p JOIN employer e ON e.id=p.employer_id"
             " WHERE p.obosnovka<>'' OR p.dh_duties<>'' ORDER BY p.title").fetchall()
         return render_template("position.html", row=row, emp=emp, values=values, errors=errors,
-                               fields=forms.POSITION, others=others)
+                               fields=forms.POSITION, others=others,
+                               ai_on=ai_text.ai_available())
+
+    @app.post("/employers/<int:eid>/positions/ai-draft")
+    def position_ai_draft(eid):
+        """Return a draft of the justification or the job description as JSON (fills the form, saves nothing)."""
+        emp = dict(_one("SELECT * FROM employer WHERE id=?", eid))
+        kind = request.form.get("kind", "")
+        if kind not in ("obosnovka", "obosnovka_ext", "dh"):
+            return jsonify(error="Непознат вид текст."), 400
+        pos = {f.name: request.form.get(f.name, "") for f in forms.POSITION}
+        d = ai_text.draft(kind, pos, emp, hint=request.form.get("ai_hint", ""),
+                          recruitment_confirmed=request.form.get("ai_recruit") == "1")
+        return jsonify(fields=d.fields, source=d.source, warnings=d.warnings)
 
     # ------------------------------------------------------------ cases
     @app.get("/cases")

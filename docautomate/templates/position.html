@@ -13,8 +13,67 @@
 </form>
 {% endif %}
 {{ error_box(errors) }}
-<form method="post" class="grid-form">
+<section class="panel" id="ai-panel">
+  <h2>Обосновка и ДХ: първа чернова</h2>
+  <p class="help">{% if ai_on %}Текстът се пише от AI (Claude) по реда от заданието: обосновка в 4 точки, при удължаване в 5; ДХ без изисквания за опит и образование. Към AI отиват само данните на длъжността и името на фирмата, без лични данни на работници.{% else %}AI не е включен (няма ключ ANTHROPIC_API_KEY в .env), затова текстът се прави от готови изречения по реда от заданието.{% endif %} Текстът само попълва полетата долу. Прочетете го, поправете го и натиснете „Запиши длъжността“.</p>
+  <div class="field wide">
+    <label for="ai-hint">Какво да знае AI за фирмата и работата (по желание)</label>
+    <textarea id="ai-hint" rows="2" placeholder="напр. строителна фирма, обекти в София, работа с кофраж"></textarea>
+    <p class="help">Не се записва. Влиза в първата точка на обосновката и в задълженията в ДХ.</p>
+  </div>
+  <div class="field wide">
+    <label class="check"><input type="checkbox" id="ai-recruit" value="1"> Работодателят потвърди, че е търсил български персонал и няма желаещи</label>
+    <p class="help">Само тогава обосновката съдържа точката за търсене на български персонал (задание, раздел 04).</p>
+  </div>
+  <div class="ai-actions">
+    <button type="button" class="btn" data-ai="obosnovka" title="Попълва „Обосновка – текст“ с 4 абзаца: дейност, нужда от работника, търсене на български персонал, без ограничаване на пазара на труда. Нищо не се записва до „Запиши длъжността“.">Напиши обосновката (3 години)</button>
+    <button type="button" class="btn" data-ai="obosnovka_ext" title="Попълва „Обосновка при удължаване – текст“ с 5 абзаца: дейност, нужда от продължаване, служителят е обучен, търсене на български персонал, без ограничаване на пазара на труда. Нищо не се записва до „Запиши длъжността“.">Напиши обосновката при удължаване</button>
+    <button type="button" class="btn" data-ai="dh" title="Попълва шестте полета на длъжностната характеристика (I–VI), без изисквания за опит и образование. Нищо не се записва до „Запиши длъжността“.">Напиши длъжностната характеристика</button>
+  </div>
+  <p id="ai-out" class="mrz-out" role="status" hidden></p>
+</section>
+<form method="post" class="grid-form" id="pos-form">
   {% for f in fields %}{{ field(f, values, errors) }}{% endfor %}
   <div class="form-actions"><button class="btn primary" title="Записва длъжността и текстовете ѝ">Запиши длъжността</button></div>
 </form>
+<script>
+(function () {
+  const form = document.getElementById('pos-form'), out = document.getElementById('ai-out');
+  const url = {{ url_for('position_ai_draft', eid=emp.id)|tojson }};
+  function show(msg, cls) { out.hidden = false; out.className = 'mrz-out ' + (cls || ''); out.textContent = msg; }
+  document.querySelectorAll('[data-ai]').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+      const kind = btn.dataset.ai;
+      const targets = kind === 'dh' ? ['dh_purpose', 'dh_duties', 'dh_responsibilities', 'dh_rights', 'dh_requirements', 'dh_conditions'] : [kind];
+      const filled = targets.filter(function (k) { const el = form.elements[k]; return el && el.value.trim(); });
+      if (filled.length && !confirm('Полетата вече имат текст. Да се заменят ли с новата чернова?')) return;
+      const fd = new FormData(form);
+      fd.append('kind', kind);
+      fd.append('ai_hint', document.getElementById('ai-hint').value);
+      if (document.getElementById('ai-recruit').checked) fd.append('ai_recruit', '1');
+      document.querySelectorAll('[data-ai]').forEach(function (b) { b.disabled = true; });
+      show('Пиша текста… (с AI отнема до минута)');
+      try {
+        const r = await fetch(url, {method: 'POST', body: fd});
+        const data = await r.json();
+        if (!r.ok) return show(data.error || 'Текстът не се получи.', 'error');
+        Object.keys(data.fields).forEach(function (k) {
+          const el = form.elements[k];
+          if (el) { el.value = data.fields[k]; el.classList.add('from-mrz'); }
+        });
+        let msg = (data.source === 'ai' ? 'Черновата е от AI.' : 'Черновата е от готови изречения.') +
+          ' Попълнените полета са жълти. Прочетете ги и натиснете „Запиши длъжността“.';
+        if (data.warnings.length) msg += ' ' + data.warnings.join(' ');
+        show(msg, data.source === 'ai' && !data.warnings.length ? 'ok' : 'warn');
+        const first = form.elements[Object.keys(data.fields)[0]];
+        if (first) first.scrollIntoView({behavior: 'smooth', block: 'center'});
+      } catch (e) {
+        show('Няма връзка с програмата. Проверете дали черният прозорец е отворен и опитайте пак.', 'error');
+      } finally {
+        document.querySelectorAll('[data-ai]').forEach(function (b) { b.disabled = false; });
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}
