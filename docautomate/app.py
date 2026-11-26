@@ -17,7 +17,7 @@ from flask import (Flask, abort, flash, jsonify, redirect, render_template, requ
 from werkzeug.utils import secure_filename
 
 from . import db as dbm
-from . import ai_text, auth, dashboard, forms, mailer, mrz, render
+from . import ai_text, auth, dashboard, forms, mailer, mrz, pipeline, render
 from . import schedule as sched
 from .grammar import parse_date
 from .context import LIST_FIELDS, PLACEHOLDERS, build_context, flatten, missing_fields
@@ -331,7 +331,8 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                                history=d.execute("SELECT * FROM status_history WHERE candidate_id=?"
                                                  " ORDER BY id DESC", (cid or 0,)).fetchall(),
                                plan=worker_doc_plan(cid) if row else None, users=auth.active_users(),
-                               gens=_worker_generations(cid) if row else ([], {}), pdf=render.converter_name())
+                               gens=_worker_generations(cid) if row else ([], {}), pdf=render.converter_name(),
+                               step=worker_step(cid) if row else None)
 
     # ------------------------------------------------------------ Справки (График)
     sort_fields = {k for k, _ in sched.DATE_FIELDS} | {"created_at"}
@@ -517,15 +518,13 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         ctx["housing_workers"] = housing_workers(d, w)
         return ctx
 
-    @app.post("/candidates/<int:cid>/generate")
-    def worker_generate(cid):
-        """„Генерирай документи“: pick the set by visa type, create or update the worker's case, fill the set."""
+    def _generate_for_worker(cid):
+        """Pick the set by visa type, create or update the worker's case, fill the set.
+        Returns (ok, message) for a flash; ok is False when nothing usable was generated."""
         d = get_db()
         plan = worker_doc_plan(cid)
-        back = url_for("candidate", cid=cid) + "#documents"
         if plan["error"]:
-            flash(plan["error"], "error")
-            return redirect(back)
+            return False, plan["error"]
         w = d.execute("SELECT * FROM candidate WHERE id=?", (cid,)).fetchone()
         case_id = plan["case_id"]
         if case_id:
@@ -539,14 +538,69 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         gen_id, errors = generate_case(case_id)
         missing = sum(1 for t in plan["templates"] if t["missing"])
         if gen_id is None:
-            flash(errors[0] if errors else "Нищо не е генерирано.", "error")
-        elif errors:
-            flash("Част от документите не са готови: " + "; ".join(errors), "error")
-        else:
-            msg = f"Документите са генерирани ({len(plan['templates'])}). Свалете ги по-долу."
-            if missing:
-                msg += f" В {missing} от тях има празни полета (излизат като „……“)."
+            return False, errors[0] if errors else "Нищо не е генерирано."
+        if errors:
+            return False, "Част от документите не са готови: " + "; ".join(errors)
+        msg = f"Документите са генерирани ({len(plan['templates'])}). Свалете ги в „Документи за Миграция“."
+        if missing:
+            msg += f" В {missing} от тях има празни полета (излизат като „……“)."
+        return True, msg
+
+    @app.post("/candidates/<int:cid>/generate")
+    def worker_generate(cid):
+        """„Генерирай документи“ from the worker profile."""
+        _one("SELECT id FROM candidate WHERE id=?", cid)
+        ok, msg = _generate_for_worker(cid)
+        flash(msg, "ok" if ok else "error")
+        return redirect(url_for("candidate", cid=cid) + "#documents")
+
+    # ------------------------------------------------------------ pipeline: „Следваща стъпка“
+    def worker_step(cid):
+        d = get_db()
+        w = _one("SELECT ca.*, co.iso3 FROM candidate ca LEFT JOIN country co ON co.id=ca.citizenship_id"
+                 " WHERE ca.id=?", cid)
+        pos = d.execute("SELECT * FROM position WHERE id=?", (w["position_id"],)).fetchone() if w["position_id"] else None
+        cats = {r["category"] for r in d.execute("SELECT DISTINCT category FROM attachment WHERE owner_type='worker'"
+                                                 " AND owner_id=?", (cid,))}
+        nxt = pipeline.next_status(w["status"], w["visa_type"])
+        step = pipeline.plan_step(dict(w), attachments=cats, position=dict(pos) if pos else None,
+                                  doc_plan=worker_doc_plan(cid) if nxt == "Готови документи" else None,
+                                  iso3=w["iso3"] or "")
+        pos_url = url_for("position", pid=w["position_id"]) + "#ai-panel" if w["position_id"] else "#cand-form"
+        for c in step.checks:
+            if c.link == "position-ai":
+                c.link = pos_url
+        return step, pipeline.deadlines(dict(w))
+
+    @app.post("/candidates/<int:cid>/next-step")
+    def worker_next_step(cid):
+        """Move the worker to the next status of the visa type's path, after the checks (задание 03:
+        the status still changes only on this manual click). Generates the documents where the step says so."""
+        back = url_for("candidate", cid=cid) + "#pipeline"
+        step, _ = worker_step(cid)
+        expected = request.form.get("expected", "")
+        if expected and expected != step.next:
+            flash("Статусът е сменен междувременно. Прегледайте стъпката отново.", "error")
+            return redirect(back)
+        if not step.next:
+            flash(step.note or "Няма следваща стъпка.", "error")
+            return redirect(back)
+        if step.blocked:
+            missing = [c.label for c in step.checks if not c.ok and c.hard]
+            flash(f"„{step.next}“ още не може: " + "; ".join(missing), "error")
+            return redirect(back)
+        if step.generate:
+            ok, msg = _generate_for_worker(cid)
+            if not ok:
+                flash(f"Статусът остава „{step.current}“, защото документите не се генерираха: {msg}", "error")
+                return redirect(back)
             flash(msg, "ok")
+        set_status(cid, step.next)
+        text = f"Статус: „{step.current}“ → „{step.next}“."
+        short = [c.label for c in step.warnings if not c.blank]
+        if short:
+            text += " Препоръчително: " + "; ".join(short) + "."
+        flash(text, "ok")
         return redirect(back)
 
     def _worker_generations(cid):

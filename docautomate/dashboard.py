@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 from flask import flash, redirect, render_template, request, url_for
 
-from . import auth, mailer, render, reports
+from . import auth, mailer, pipeline, render, reports
 from . import schedule as sched
 from .db import get_db
 
@@ -58,7 +58,8 @@ def register(app):
             prev_at, next_at = start - timedelta(days=7), start + timedelta(days=7)
         return render_template(
             "dashboard.html", f=f, rows=rows, today=today, start=start, end=end, view=view, kinds=kinds,
-            delayed=reports.delayed(rows, today), status_counts=reports.by_status(rows),
+            delayed=reports.delayed(rows, today), stalled=pipeline.stalled(rows, today),
+            stall_days=pipeline.STALL_DAYS, status_counts=reports.by_status(rows),
             residence=reports.residence(rows, today), events=evs,
             event_counts={k: sum(1 for e in evs if e["field"] == k) for k, _ in reports.EVENTS},
             weeks=reports.calendar_weeks(start, end, evs), prev_at=prev_at, next_at=next_at,

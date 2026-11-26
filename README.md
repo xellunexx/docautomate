@@ -73,6 +73,7 @@ python -m pytest
 
 - `docs/zadanie.md` – заданието накратко и в кой етап е направена всяка част
 - `docs/zadanie-plan.md` – план по етапи и отговорите на Xel
+- `docs/pipeline.md` – „Следваща стъпка“: проверки по етапи и решения по подразбиране
 - `docs/pipeline-design.md` – как върви работникът през етапите
 - `docs/templates-inventory.md` – опис на бланките (без лични данни)
 - `CHANGELOG.md` – какво е направено във всеки етап

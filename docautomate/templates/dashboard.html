@@ -28,6 +28,13 @@
     {% for x in delayed %}<tr><td>{{ worker_link(x.r) }}</td><td>{{ x.r.employer or '' }}</td><td><span class="tag delay-{{ x.delay }}">{{ x.r.status }}</span></td><td class="num">{{ x.days_in_status }}</td><td>{{ x.r.assigned }}</td></tr>{% endfor %}
     </tbody></table>{% else %}<p class="empty">Няма забавяния.</p>{% endif %}
   </details>
+  <details class="kpi {{ 'orange' if stalled }}">
+    <summary title="Работници без смяна на статуса от {{ stall_days }} или повече дни, които имат следваща стъпка. Кликнете за списъка.">
+      <b>{{ stalled|length }}</b><span>без движение</span><small>{{ stall_days }}+ дни в същия статус</small></summary>
+    {% if stalled %}<table class="list small"><thead><tr><th>Работник</th><th>Статус</th><th class="num">Дни</th><th>Следваща стъпка</th><th>Assigned</th></tr></thead><tbody>
+    {% for x in stalled %}<tr><td>{{ worker_link(x.r) }}</td><td>{{ x.r.status }}</td><td class="num">{{ x.days }}</td><td>{{ x.next }}</td><td>{{ x.r.assigned }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="empty">Всички работници са в движение.</p>{% endif %}
+  </details>
   <details class="kpi">
     <summary title="Брой работници във всеки текущ статус. Кликнете за разбивката."><b>{{ rows|length }}</b><span>работници</span><small>по статус – кликнете</small></summary>
     <ul class="status-counts">{% for s, n in status_counts %}<li><a href="{{ url_for('schedule', status=s) }}" title="Отваря графика само с този статус">{{ s }}</a> <b>{{ n }}</b></li>{% endfor %}</ul>

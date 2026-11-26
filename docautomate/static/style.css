@@ -387,6 +387,7 @@ td.nowrap { white-space: nowrap; }
 .kpi summary b { font-size: 1.9rem; line-height: 1.1; }
 .kpi summary span { font-weight: 600; } .kpi summary small { color: var(--muted); }
 .kpi.red { border-color: var(--err-line); } .kpi.red summary b { color: var(--err); }
+.kpi.orange { border-color: var(--warn-line); } .kpi.orange summary b { color: var(--warn); }
 .kpi[open] { grid-column: 1 / -1; }
 .status-counts, ul.plain { list-style: none; padding: 0; margin: 8px 0; columns: 2; font-size: .9rem; }
 ul.plain { columns: 1; } ul.plain li, .status-counts li { padding: 2px 0; }
@@ -412,3 +413,22 @@ table.cal td.today { outline: 2px solid var(--accent); outline-offset: -2px; }
 .board-card.delay-orange { border-left-color: #e3a43c; } .board-card.delay-red { border-left-color: var(--err); }
 .report h3 { margin: 14px 0 6px; font-size: .95rem; }
 @media print { .top, .no-print, .flash { display: none !important; } body { display: block; background: #fff; } .panel { box-shadow: none; border: 0; } }
+
+/* ---------------------------------------------------------------- pipeline */
+.stepper { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 4px 0 10px; counter-reset: st; }
+.stepper li { counter-increment: st; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line, #d8dee8); font-size: 14px; color: var(--muted, #5b6575); background: #fff; }
+.stepper li::before { content: counter(st) ". "; }
+.stepper li.done { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
+.stepper li.cur { background: var(--accent, #2b4acb); border-color: var(--accent, #2b4acb); color: #fff; font-weight: 600; }
+.stepper li.next { border-style: dashed; border-color: var(--accent, #2b4acb); color: var(--ink, #0f1b2d); }
+.checks, .deadlines { list-style: none; padding: 0; margin: 6px 0 14px; display: grid; gap: 6px; }
+.checks li { display: grid; grid-template-columns: 1.4em 1fr; gap: 6px; align-items: baseline; }
+.blanks { margin: 0 0 12px; } .blanks summary { cursor: pointer; color: var(--warn); }
+.checks .mark { display: inline-block; width: 1.4em; text-align: center; font-weight: 700; }
+.checks li.ok .mark { color: var(--ok); } .checks li.bad .mark, .checks li.bad { color: var(--err); }
+.checks li.soft .mark { color: var(--warn); }
+.deadlines li { padding: 6px 10px; border-radius: var(--r); border: 1px solid var(--line, #d8dee8); }
+.deadlines li a { color: inherit; text-decoration: none; }
+.deadlines .dl-red { background: var(--err-bg); border-color: var(--err-line); color: var(--err); }
+.deadlines .dl-orange { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
+.deadlines .dl-yellow { background: #fffbe8; border-color: #e8cf7a; }

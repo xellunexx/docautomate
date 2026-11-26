@@ -65,6 +65,45 @@
 </form>
 
 {% if row %}
+{% set st, dls = step %}
+<section class="panel" id="pipeline">
+  <div class="head-row"><h2>Процес: следваща стъпка</h2></div>
+  <ol class="stepper" aria-label="Етапи за тип виза {{ row.visa_type or '—' }}">
+    {% set ns = namespace(done=true) %}
+    {% for s in st.path %}
+      {% if s == st.current %}{% set ns.done = false %}<li class="cur" aria-current="step">{{ s }}</li>
+      {% elif ns.done and st.current in st.path %}<li class="done">{{ s }}</li>
+      {% else %}<li class="{{ 'next' if s == st.next }}">{{ s }}</li>{% endif %}
+    {% endfor %}
+  </ol>
+  <p class="help">Път за тип виза „{{ row.visa_type or 'не е избран (показан е пълният път)' }}“. Статусът се мени само с този бутон или ръчно от графика. Датите и файловете не го местят.</p>
+  {% if st.next %}
+    <h3>Към „{{ st.next }}“ трябва:</h3>
+    {% set blanks = st.checks|selectattr('blank')|list %}
+    <ul class="checks">
+    {% for c in st.checks if not c.blank %}
+      <li class="{{ 'ok' if c.ok else ('bad' if c.hard else 'soft') }}"><span class="mark" aria-hidden="true">{{ '✓' if c.ok else ('✗' if c.hard else '!') }}</span>
+        <span>{{ c.label }}{% if not c.ok %} – {% if c.link %}<a href="{{ c.link }}" title="Отваря мястото, където се попълва">{{ 'отворете' if 'AI' in c.label else 'попълнете' }}</a>{% endif %}{% if not c.hard %} <span class="help">(препоръчително, не спира стъпката)</span>{% endif %}{% endif %}</span></li>
+    {% else %}
+      {% if not blanks %}<li class="ok"><span class="mark" aria-hidden="true">✓</span><span>Няма какво да се проверява.</span></li>{% endif %}
+    {% endfor %}
+    </ul>
+    {% if blanks %}{% set nb = blanks|rejectattr('ok')|list|length %}
+    <details class="blanks"><summary title="Кои полета ще излязат като празен ред „……“ във всяка бланка. Не спират стъпката.">Бланки: {{ blanks|length - nb }} пълни, {{ nb }} с празни полета (излизат като „……“ за попълване на ръка)</summary>
+      <ul class="checks">{% for c in blanks %}<li class="{{ 'ok' if c.ok else 'soft' }}"><span class="mark" aria-hidden="true">{{ '✓' if c.ok else '!' }}</span><span>{{ c.text }}</span></li>{% endfor %}</ul>
+    </details>{% endif %}
+    {% if st.generate %}<p class="help">Тази стъпка генерира документите за типа виза (нов комплект в „Документи за Миграция“). Ако генерирането не успее, статусът не се сменя.</p>{% endif %}
+    <form method="post" action="{{ url_for('worker_next_step', cid=row.id) }}">
+      <input type="hidden" name="expected" value="{{ st.next }}">
+      <button class="btn primary" {{ 'disabled' if st.blocked }} title="{{ 'Първо попълнете отбелязаното с ✗' if st.blocked else 'Проверява данните' ~ (', генерира документите' if st.generate else '') ~ ' и сменя статуса на „' ~ st.next ~ '“. Записва се в историята.' }}">Следваща стъпка: {{ st.next }}</button>
+    </form>
+  {% else %}
+    <p class="help">{{ st.note }}</p>
+  {% endif %}
+  <h3>Срокове</h3>
+  {% if dls %}<ul class="deadlines">{% for level, text, link in dls %}<li class="dl-{{ level or 'none' }}"><a href="{{ link }}" title="Отваря полето с тази дата">{{ text }}</a></li>{% endfor %}</ul>
+  {% else %}<p class="help">Няма срокове в следващите {{ 14 }} дни.</p>{% endif %}
+</section>
 <section class="panel" id="schedule">
   <div class="head-row"><h2>График</h2><a class="btn link" href="{{ url_for('schedule') }}" title="Отваря таблицата „Справки (График)“ с всички работници">Към графика</a></div>
   <p class="help">Същите полета като в „Справки (График)“; промяната се вижда и на двете места. Датите не сменят статуса.</p>
@@ -113,6 +152,7 @@
   {% if plan.error %}<p class="flash error">{{ plan.error }}</p>
   {% else %}
   <p class="help">Комплект за тип виза „{{ row.visa_type }}“ ({{ plan.case_type.name }}). Трудовият договор е на руски за Узбекистан и Киргизстан и на английски за всички останали; Invitation Letter е само за Индия и Непал. Условията по договора (срок, заплата…) се пазят в <a href="{{ url_for('case_edit', case_id=plan.case_id) if plan.case_id else url_for('case_edit', candidate_id=row.id) }}" title="Отваря условията по договора за този работник">случая</a>.</p>
+  {% if row.position_id %}<p><a class="btn" href="{{ url_for('position', pid=row.position_id) }}#ai-panel" title="Отваря длъжността на работника, където AI пише обосновката (3 години или удължаване) и длъжностната характеристика по реда от заданието">Обосновка и ДХ с AI</a></p>{% endif %}
   {% if not pdf %}<p class="help">Няма програма за PDF на този компютър: правят се само Word файлове.</p>{% endif %}
   <ul class="tpl-list">
   {% for item in plan.templates %}
