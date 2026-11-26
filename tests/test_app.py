@@ -222,7 +222,7 @@ def test_every_button_and_nav_link_has_a_description(client, app):
     _setup_case(client, app)
     client.post("/cases/1/generate")
     pages = ("/", "/candidates", "/employers", "/cases", "/templates", "/placeholders", "/case-types", "/countries",
-             "/import", "/candidates/new", "/candidates/1", "/employers/1", "/positions/1", "/employers/1/positions/new", "/schedule", "/schedule?group=status",
+             "/import", "/candidates/new", "/candidates/1", "/employers/1", "/positions/1", "/employers/1/positions/new", "/schedule", "/schedule?group=status", "/board", "/reports", "/reports?employer_report=1", "/settings/mail", "/users", "/history", "/?view=month",
              "/cases/new", "/cases/1", "/cases/1/edit", "/cases/new?copy=1")
     tag = re.compile(r"<(button|a)\b([^>]*)>", re.S)
     for url in pages:

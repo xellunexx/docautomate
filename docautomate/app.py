@@ -17,7 +17,7 @@ from flask import (Flask, abort, flash, jsonify, redirect, render_template, requ
 from werkzeug.utils import secure_filename
 
 from . import db as dbm
-from . import auth, forms, mrz, render
+from . import auth, dashboard, forms, mailer, mrz, render
 from . import schedule as sched
 from .grammar import parse_date
 from .context import LIST_FIELDS, PLACEHOLDERS, build_context, flatten, missing_fields
@@ -55,12 +55,16 @@ def create_app(data_dir: Path | None = None, testing: bool = False) -> Flask:
     conn = dbm.connect(Path(app.config["DATABASE"]))
     dbm.init_db(conn)
     auth.init(conn)
+    mailer.init(conn)
     conn.commit()
     install_masters(conn, data_dir / "templates")
     conn.close()
     app.teardown_appcontext(dbm.close_db)
     auth.register(app)
+    dashboard.register(app)
     _register(app)
+    if not testing and not os.environ.get("DOCAUTOMATE_NO_MAILER"):
+        mailer.start_scheduler(app, lambda: dbm.connect(Path(app.config["DATABASE"])))
     return app
 
 
@@ -237,18 +241,6 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         return redirect(request.referrer or url_for("home"))
 
     # ------------------------------------------------------------ home
-    @app.get("/")
-    def home():
-        d = get_db()
-        counts = {t: d.execute(f'SELECT count(*) FROM "{t}"').fetchone()[0]
-                  for t in ("candidate", "employer", "position", "case", "generation")}
-        recent = d.execute(
-            'SELECT c.id, c.updated_at, ca.name_cyr, e.name AS employer, ct.name AS ctype FROM "case" c'
-            " JOIN candidate ca ON ca.id=c.candidate_id JOIN employer e ON e.id=c.employer_id"
-            " JOIN case_type ct ON ct.id=c.case_type_id ORDER BY c.updated_at DESC LIMIT 10").fetchall()
-        return render_template("home.html", counts=counts, recent=recent,
-                               pdf=render.converter_name(), ocr=mrz.ocr_available())
-
     # ------------------------------------------------------------ candidates
     @app.get("/candidates")
     def candidates():

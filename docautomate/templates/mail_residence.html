@@ -1,0 +1,9 @@
+<div style="font-family:Arial,sans-serif;font-size:14px">
+<h2>Изтичащо пребиваване</h2>
+{% for key, label, color in [('yellow','Жълто · 91–120 дни','#fffbe0'), ('orange','Оранжево · 61–90 дни','#fff1db'), ('red','Червено · 0–60 дни','#fdecea')] %}
+<h3>{{ label }} ({{ g[key]|length }})</h3>
+{% if g[key] %}<table cellpadding="4" style="border-collapse:collapse" border="1"><tr><th>Работник</th><th>Работодател</th><th>Assigned</th><th>Срок</th><th>Остават дни</th></tr>
+{% for x in g[key] %}<tr style="background:{{ color }}"><td><a href="{{ base }}/candidates/{{ x.r.id }}">№ {{ x.r.ref_no }} {{ x.r.name_cyr or x.r.name_lat }}</a></td><td>{{ x.r.employer or '' }}</td><td>{{ x.r.assigned }}</td><td>{{ x.r.residence_until }}</td><td>{{ x.days }}</td></tr>{% endfor %}
+</table>{% endif %}
+{% endfor %}
+</div>

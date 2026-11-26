@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}Рапорти{% endblock %}
+{% macro worker_link(r) -%}<a href="{{ url_for('candidate', cid=r.id) }}" title="Отваря профила на работника">№ {{ r.ref_no }} {{ r.name_cyr or r.name_lat }}</a>{%- endmacro %}
+{% block body %}
+<div class="head-row no-print"><h1>Рапорти</h1>
+  <button type="button" class="btn" onclick="window.print()" title="Отпечатва страницата или я записва като PDF (изберете „Save as PDF“ в прозореца за печат)">Печат / PDF</button></div>
+<p class="intro no-print">Същото съдържание, което програмата праща по имейл на супер юзъра{% if not mail_ready %} (имейлите още не са настроени: {% if current_user.is_super %}<a href="{{ url_for('mail_settings') }}" title="Настройка на пощата за рапортите">Имейл рапорти</a>{% else %}пита се супер юзърът{% endif %}){% endif %}.</p>
+<form class="filters no-print" method="get" aria-label="Филтри">
+  {% include '_dash_filters.html' %}
+  <button class="btn" title="Прилага филтрите">Покажи</button>
+  {% if request.args %}<a class="btn link" href="{{ url_for('reports_page') }}" title="Маха филтрите">Изчисти</a>{% endif %}
+</form>
+
+<section class="panel report">
+  <h2>Забавяне по статус <small class="muted">(всеки ден)</small></h2>
+  <p class="muted small">Червените са първи; във всеки цвят – по дни над прага. Към {{ today|bgdate }}.</p>
+  {% if delayed %}<table class="list"><thead><tr><th>Работник</th><th>Работодател</th><th>Assigned</th><th>Статус</th><th>От</th><th class="num">Дни</th><th class="num">Над прага</th></tr></thead><tbody>
+  {% for x in delayed %}<tr><td>{{ worker_link(x.r) }}</td><td>{{ x.r.employer or '' }}</td><td>{{ x.r.assigned }}</td><td><span class="tag delay-{{ x.delay }}">{{ x.r.status }}</span></td><td>{{ x.status_start|bgdate }}</td><td class="num">{{ x.days_in_status }}</td><td class="num">{{ x.days_over }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="empty">0 забавени записа.</p>{% endif %}
+</section>
+
+<section class="panel report">
+  <h2>Движение за период <small class="muted">(всеки понеделник)</small></h2>
+  <h3>Миналата седмица: {{ movement.last[0]|bgdate }} – {{ movement.last[1]|bgdate }}</h3>
+  <p>Входирания: <b>{{ movement.filed }}</b> · Получени разрешения: <b>{{ movement.permits }}</b> · Получени визи: <b>{{ movement.visas }}</b> · Събития: <b>{{ movement.last_events|length }}</b></p>
+  {% if movement.last_events %}<ul class="plain">{% for e in movement.last_events %}<li>{{ e.date|bgdate }} · {{ e.label }} · {{ worker_link(e.r) }} · {{ e.r.employer or '' }} · {{ e.r.assigned }}</li>{% endfor %}</ul>{% endif %}
+  <h3>Започващата седмица: {{ movement.next[0]|bgdate }} – {{ movement.next[1]|bgdate }}</h3>
+  {% if movement.next_events %}<table class="list"><thead><tr><th>Дата</th><th>Събитие</th><th>Работник</th><th>Работодател</th><th>Assigned</th></tr></thead><tbody>
+  {% for e in movement.next_events %}<tr><td>{{ e.date|bgdate }}</td><td>{{ e.label }}</td><td>{{ worker_link(e.r) }}</td><td>{{ e.r.employer or '' }}</td><td>{{ e.r.assigned }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="empty">Няма планирани събития.</p>{% endif %}
+</section>
+
+<section class="panel report">
+  <h2>Изтичащо пребиваване <small class="muted">(на 1-во число)</small></h2>
+  {% for key, label in [('yellow', 'Жълто · 91–120 дни'), ('orange', 'Оранжево · 61–90 дни'), ('red', 'Червено · 0–60 дни')] %}
+  <h3 class="res-{{ key }}">{{ label }} ({{ residence[key]|length }})</h3>
+  {% if residence[key] %}<table class="list"><thead><tr><th>Работник</th><th>Работодател</th><th>Assigned</th><th>Срок на пребиваване</th><th class="num">Остават дни</th></tr></thead><tbody>
+  {% for x in residence[key] %}<tr><td>{{ worker_link(x.r) }}</td><td>{{ x.r.employer or '' }}</td><td>{{ x.r.assigned }}</td><td>{{ x.r.residence_until|bgdate }}</td><td class="num">{{ x.days }}</td></tr>{% endfor %}
+  </tbody></table>{% endif %}
+  {% endfor %}
+</section>
+
+<section class="panel report">
+  <h2>Време между етапите</h2>
+  <p>От входиране до разрешение: <b>{{ stage.permit.median if stage.permit.median is not none else '—' }}</b> дни (медиана, записи: {{ stage.permit.count }})</p>
+  <p>От интервю до виза: <b>{{ stage.visa.median if stage.visa.median is not none else '—' }}</b> дни (медиана, записи: {{ stage.visa.count }})</p>
+  <p class="muted small">Броят се само записи с двете дати в правилния ред.</p>
+</section>
+
+<section class="panel report">
+  <h2>Справка за работодател</h2>
+  <form method="get" class="filters no-print"><select name="employer_report" aria-label="Работодател за справката"><option value="">— изберете работодател —</option>
+    {% for e in employers %}<option value="{{ e.id }}" {{ 'selected' if emp and emp.id == e.id }}>{{ e.name }}</option>{% endfor %}</select>
+    <button class="btn" title="Показва справката за избрания работодател">Покажи</button></form>
+  {% if emp %}
+  <p><b>{{ emp.name }}</b>, ЕИК {{ emp.eik }} · към {{ today|bgdate }} · работници: {{ emp_rows|length }}</p>
+  <table class="list"><thead><tr><th>№</th><th>Работник</th><th>Статус</th><th>Входиране</th><th>Разрешение</th><th>Интервю за виза</th><th>Виза</th><th>Пристигане</th><th>Срок на пребиваване</th></tr></thead><tbody>
+  {% for r in emp_rows %}<tr><td>{{ r.ref_no }}</td><td>{{ r.name_cyr or r.name_lat }}</td><td>{{ r.status }}</td><td>{{ r.filed_date|bgdate }}</td><td>{{ r.permit_date|bgdate }}</td><td>{{ r.visa_interview_date|bgdate }}</td><td>{{ r.visa_date|bgdate }}</td><td>{{ r.arrival_date|bgdate }}</td><td>{{ r.residence_until|bgdate }}</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="muted small no-print">За PDF натиснете „Печат / PDF“ горе. Кои дати се споделят с работодателя е за уточняване (заданието); тук са основните.</p>
+  {% endif %}
+</section>
+{% endblock %}

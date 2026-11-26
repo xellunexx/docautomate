@@ -1,0 +1,12 @@
+{# Shared filters: employer (several), visa type, status, Assigned. Extra hidden fields come from the caller. #}
+<details class="multi-pick">
+  <summary title="Изберете един или няколко работодатели">{{ 'Работодатели: ' ~ f.employers|length if f.employers else 'Всички работодатели' }}</summary>
+  <div class="multi-list">{% for e in employers %}<label class="check"><input type="checkbox" name="employer" value="{{ e.id }}" {{ 'checked' if e.id in f.employers }}> {{ e.name }}</label>{% endfor %}</div>
+</details>
+<select name="visa" aria-label="Тип виза"><option value="">Всички типове виза</option>
+  {% for v in VISA_TYPES %}<option {{ 'selected' if f.visa == v }}>{{ v }}</option>{% endfor %}</select>
+<select name="status" aria-label="Статус"><option value="">Всички статуси</option>
+  {% for s in statuses %}<option {{ 'selected' if f.status == s }}>{{ s }}</option>{% endfor %}</select>
+<select name="assigned" aria-label="Assigned"><option value="">Всички отговорници</option>
+  <option value="-" {{ 'selected' if f.assigned == '-' }}>Без отговорник</option>
+  {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if f.assigned == u.id|string }}>{{ u.full_name or u.username }}</option>{% endfor %}</select>

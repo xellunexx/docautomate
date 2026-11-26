@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Имейл рапорти{% endblock %}
+{% block body %}
+<h1>Имейл рапорти</h1>
+<p class="intro">Програмата праща три рапорта до супер юзърите: <b>забавяне по статус</b> всеки ден, <b>движение</b> всеки понеделник и <b>изтичащо пребиваване</b> на 1-во число. Праща ги, докато програмата е пусната. {{ 'Готово за изпращане.' if ready else 'Още не е настроено: попълнете пощата и имейл на поне един супер юзър (меню Потребители).' }}</p>
+<p class="muted small">Получатели сега: {{ to|join(', ') or 'няма' }}</p>
+<form method="post" class="grid-form">
+  {% for k, label, help in fields %}
+  <div class="field">
+    <label for="m-{{ k }}">{{ label }}</label>
+    {% if k == 'smtp_password' %}<input id="m-{{ k }}" name="{{ k }}" type="password" autocomplete="new-password" placeholder="{{ 'записана – празно = без промяна' if s.get(k) else '' }}">
+    {% elif k == 'smtp_security' %}<select id="m-{{ k }}" name="{{ k }}">{% for v in ('ssl', 'starttls') %}<option {{ 'selected' if s.get(k) == v }}>{{ v }}</option>{% endfor %}</select>
+    {% else %}<input id="m-{{ k }}" name="{{ k }}" value="{{ s.get(k, '') }}">{% endif %}
+    <p class="help">{{ help }}</p>
+  </div>
+  {% endfor %}
+  <div class="form-actions">
+    <button class="btn primary" title="Записва настройките">Запиши</button>
+    <button class="btn" name="test" value="1" title="Записва и праща веднага рапорта за забавяне до получателите">Запиши и изпрати тестов рапорт</button>
+  </div>
+</form>
+<h2>Последни изпращания</h2>
+{% if log %}<table class="list"><thead><tr><th>Кога</th><th>Рапорт</th><th>Период</th><th>До</th><th>Резултат</th></tr></thead><tbody>
+{% for l in log %}<tr><td>{{ l.sent_at[:16] }}</td><td>{{ {'delays': 'забавяне', 'movement': 'движение', 'residence': 'пребиваване', 'test': 'тест'}.get(l.kind, l.kind) }}</td><td>{{ l.period }}</td><td>{{ l.recipients }}</td><td>{% if l.ok %}<span class="tag ok">изпратен</span>{% else %}<span class="tag warn">{{ l.error }}</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table>{% else %}<p class="empty">Още няма изпратени рапорти.</p>{% endif %}
+{% endblock %}
