@@ -17,7 +17,7 @@ from flask import (Flask, abort, flash, jsonify, redirect, render_template, requ
 from werkzeug.utils import secure_filename
 
 from . import db as dbm
-from . import forms, mrz, render
+from . import auth, forms, mrz, render
 from . import schedule as sched
 from .grammar import parse_date
 from .context import LIST_FIELDS, PLACEHOLDERS, build_context, flatten, missing_fields
@@ -54,9 +54,12 @@ def create_app(data_dir: Path | None = None, testing: bool = False) -> Flask:
     )
     conn = dbm.connect(Path(app.config["DATABASE"]))
     dbm.init_db(conn)
+    auth.init(conn)
+    conn.commit()
     install_masters(conn, data_dir / "templates")
     conn.close()
     app.teardown_appcontext(dbm.close_db)
+    auth.register(app)
     _register(app)
     return app
 
@@ -138,17 +141,26 @@ def _one(sql, *args):
 def _insert(table, values: dict) -> int:
     cols = ", ".join(values)
     q = ", ".join("?" * len(values))
-    cur = get_db().execute(f'INSERT INTO "{table}" ({cols}) VALUES ({q})', list(values.values()))
-    get_db().commit()
+    d = get_db()
+    cur = d.execute(f'INSERT INTO "{table}" ({cols}) VALUES ({q})', list(values.values()))
+    if table in auth.AUDITED:
+        row = d.execute(f'SELECT * FROM "{table}" WHERE id=?', (cur.lastrowid,)).fetchone()
+        auth.log("create", table, cur.lastrowid, auth.record_label(table, row))
+    d.commit()
     return cur.lastrowid
 
 
 def _update(table, row_id, values: dict, touch=True) -> None:
+    """Every edit of the bases goes through here, so the change history sees each changed field."""
+    d = get_db()
+    before = d.execute(f'SELECT * FROM "{table}" WHERE id=?', (row_id,)).fetchone() if table in auth.AUDITED else None
     sets = ", ".join(f"{k}=?" for k in values)
     if touch:
         sets += ", updated_at=datetime('now','localtime')"
-    get_db().execute(f'UPDATE "{table}" SET {sets} WHERE id=?', [*values.values(), row_id])
-    get_db().commit()
+    d.execute(f'UPDATE "{table}" SET {sets} WHERE id=?', [*values.values(), row_id])
+    if table in auth.AUDITED:
+        auth.log_changes(table, row_id, before, values)
+    d.commit()
 
 
 def _countries():
@@ -326,7 +338,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                                sched_dates=sched.DATE_FIELDS,
                                history=d.execute("SELECT * FROM status_history WHERE candidate_id=?"
                                                  " ORDER BY id DESC", (cid or 0,)).fetchall(),
-                               plan=worker_doc_plan(cid) if row else None,
+                               plan=worker_doc_plan(cid) if row else None, users=auth.active_users(),
                                gens=_worker_generations(cid) if row else ([], {}), pdf=render.converter_name())
 
     # ------------------------------------------------------------ Справки (График)
@@ -340,12 +352,20 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         f_visa = request.args.get("visa", "").strip()
         f_status = request.args.get("status", "").strip()
         f_delay = request.args.get("delay", "").strip()
+        f_assigned = request.args.get("assigned", "").strip()
         group = request.args.get("group", "")
         sort = request.args.get("sort", "")
         desc = request.args.get("dir") == "desc"
-        sql = ("SELECT ca.*, co.name AS citizenship, e.name AS employer FROM candidate ca"
-               " LEFT JOIN country co ON co.id=ca.citizenship_id LEFT JOIN employer e ON e.id=ca.employer_id")
+        sql = ("SELECT ca.*, co.name AS citizenship, e.name AS employer,"
+               " coalesce(nullif(u.full_name, ''), u.username, 'Без отговорник') AS assigned FROM candidate ca"
+               " LEFT JOIN country co ON co.id=ca.citizenship_id LEFT JOIN employer e ON e.id=ca.employer_id"
+               " LEFT JOIN app_user u ON u.id=ca.assigned_user_id")
         where, args = [], []
+        if f_assigned == "-":
+            where.append("ca.assigned_user_id IS NULL")
+        elif f_assigned.isdigit():
+            where.append("ca.assigned_user_id=?")
+            args.append(int(f_assigned))
         if f_emps:
             where.append(f"ca.employer_id IN ({','.join('?' * len(f_emps))})")
             args += f_emps
@@ -366,7 +386,8 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
             rows = filled + [x for x in rows if not x["r"][sort]]
         else:
             rows.sort(key=lambda x: x["r"]["ref_no"] or 0)
-        group_keys = {"status": "status", "visa": "visa_type", "employer": "employer", "contact": "contact"}
+        group_keys = {"status": "status", "visa": "visa_type", "employer": "employer", "contact": "contact",
+                      "assigned": "assigned"}
         groups = []
         if group in group_keys:
             col = group_keys[group]
@@ -381,14 +402,16 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                 groups[-1][1].append(x)
         return render_template(
             "schedule.html", rows=rows, groups=groups, group=group, sort=sort, desc=desc,
-            f_emps=f_emps, f_visa=f_visa, f_status=f_status, f_delay=f_delay,
+            f_emps=f_emps, f_visa=f_visa, f_status=f_status, f_delay=f_delay, f_assigned=f_assigned,
+            users=auth.active_users(),
             employers=d.execute("SELECT id, name FROM employer ORDER BY name").fetchall(),
             statuses=sched.ALL_STATUSES, main_statuses=sched.STATUSES, date_fields=sched.DATE_FIELDS)
 
-    def set_status(cid, new_status, by=""):
+    def set_status(cid, new_status, by=None):
         """Manual status change: the only way a status moves. Writes the history row."""
         d = get_db()
-        row = _one("SELECT status FROM candidate WHERE id=?", cid)
+        by = auth.username() if by is None else by
+        row = _one("SELECT * FROM candidate WHERE id=?", cid)
         if new_status not in sched.ALL_STATUSES:
             raise ValueError("невалиден статус")
         if new_status == row["status"]:
@@ -397,6 +420,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                   " updated_at=datetime('now','localtime') WHERE id=?", (new_status, cid))
         d.execute("INSERT INTO status_history (candidate_id, old_status, new_status, changed_by) VALUES (?,?,?,?)",
                   (cid, row["status"], new_status, by))
+        auth.log("update", "candidate", cid, auth.record_label("candidate", row), "status", row["status"], new_status)
         d.commit()
         return True
 
@@ -407,6 +431,14 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         _one("SELECT id FROM candidate WHERE id=?", cid)
         data = request.get_json(silent=True) or request.form.to_dict()
         values, errors = {}, {}
+        if "assigned_user_id" in data:
+            raw = str(data["assigned_user_id"] or "").strip()
+            if raw == "":
+                values["assigned_user_id"] = None
+            elif raw.isdigit() and any(u["id"] == int(raw) for u in auth.active_users()):
+                values["assigned_user_id"] = int(raw)
+            else:
+                errors["assigned_user_id"] = "Assigned: изберете активен потребител"
         for k, v in data.items():
             if k in EDITABLE_TEXT:
                 values[k] = str(v).strip()
@@ -426,9 +458,11 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         info = sched.addition_info(row)
         if request.is_json:
             return jsonify(ok=not errors, errors=errors, status=row["status"], delay=info["delay"],
+                           assigned_user_id=row["assigned_user_id"],
                            days_in_status=info["days_in_status"], residence_days=info["residence_days"],
                            residence_band=info["residence_band"],
-                           values={k: (_iso_to_bg(row[k]) if k in EDITABLE_DATES else row[k]) for k in values}), \
+                           values={k: (_iso_to_bg(row[k]) if k in EDITABLE_DATES else row[k]) for k in values
+                                   if k != "assigned_user_id"}), \
                 (200 if not errors else 422)
         for e in errors.values():
             flash(e, "error")
@@ -714,11 +748,62 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
             ext = re.sub(r"[^a-z0-9.]", "", Path(original).suffix.lower())[:10]
             stored = f"{owner_type}-{owner_id}-{datetime.now():%Y%m%d%H%M%S}-{secrets.token_hex(4)}{ext}"
             f.save(folder / stored)
-            d.execute("INSERT INTO attachment (owner_type, owner_id, category, stored_name, original_name)"
-                      " VALUES (?,?,?,?,?)", (owner_type, owner_id, category, stored, original))
+            aid = d.execute("INSERT INTO attachment (owner_type, owner_id, category, stored_name, original_name)"
+                            " VALUES (?,?,?,?,?)", (owner_type, owner_id, category, stored, original)).lastrowid
+            auth.log("create", "attachment", aid, _owner_label(owner_type, owner_id),
+                     attach_categories[owner_type][category], "", original)
         d.commit()
         flash(f"Качени файлове: {len(files)} в „{attach_categories[owner_type][category]}“.", "ok")
         return redirect(back)
+
+    def _owner_label(owner_type, owner_id):
+        table = "candidate" if owner_type == "worker" else "employer"
+        row = get_db().execute(f"SELECT * FROM {table} WHERE id=?", (owner_id,)).fetchone()
+        return auth.record_label(table, row)
+
+    # ------------------------------------------------------------ deleting (super user only)
+    @app.post("/candidates/<int:cid>/delete")
+    @auth.super_required
+    def candidate_delete(cid):
+        """Deletes the worker, the worker's cases, generated documents and attachments. The change history
+        and the status history keep the record."""
+        d = get_db()
+        row = _one("SELECT * FROM candidate WHERE id=?", cid)
+        label = auth.record_label("candidate", row)
+        for c in d.execute('SELECT id FROM "case" WHERE candidate_id=?', (cid,)).fetchall():
+            for g_ in d.execute("SELECT folder FROM generation WHERE case_id=?", (c["id"],)).fetchall():
+                shutil.rmtree(Path(dbm.data_dir()) / "generated" / g_["folder"], ignore_errors=True)
+            d.execute('DELETE FROM "case" WHERE id=?', (c["id"],))
+        for a in d.execute("SELECT * FROM attachment WHERE owner_type='worker' AND owner_id=?", (cid,)).fetchall():
+            (Path(dbm.data_dir()) / "attachments" / a["stored_name"]).unlink(missing_ok=True)
+        d.execute("DELETE FROM attachment WHERE owner_type='worker' AND owner_id=?", (cid,))
+        d.execute("DELETE FROM candidate WHERE id=?", (cid,))
+        auth.log("delete", "candidate", cid, label, "", json.dumps(dict(row), ensure_ascii=False, default=str), "")
+        d.commit()
+        flash(f"Работникът {label} е изтрит. Записът остава в историята на промените.", "ok")
+        return redirect(url_for("candidates"))
+
+    @app.post("/employers/<int:eid>/delete")
+    @auth.super_required
+    def employer_delete(eid):
+        d = get_db()
+        row = _one("SELECT * FROM employer WHERE id=?", eid)
+        label = auth.record_label("employer", row)
+        n = d.execute("SELECT count(*) FROM candidate WHERE employer_id=?", (eid,)).fetchone()[0]
+        n += d.execute('SELECT count(*) FROM "case" WHERE employer_id=?', (eid,)).fetchone()[0]
+        if n:
+            flash("Работодателят не се изтрива, докато има работници или случаи при него. "
+                  "Преместете или изтрийте първо тях.", "error")
+            return redirect(url_for("employer", eid=eid))
+        for a in d.execute("SELECT * FROM attachment WHERE owner_type='employer' AND owner_id=?", (eid,)).fetchall():
+            (Path(dbm.data_dir()) / "attachments" / a["stored_name"]).unlink(missing_ok=True)
+        d.execute("DELETE FROM attachment WHERE owner_type='employer' AND owner_id=?", (eid,))
+        d.execute("DELETE FROM position WHERE employer_id=?", (eid,))
+        d.execute("DELETE FROM employer WHERE id=?", (eid,))
+        auth.log("delete", "employer", eid, label, "", json.dumps(dict(row), ensure_ascii=False, default=str), "")
+        d.commit()
+        flash(f"Работодателят {label} е изтрит. Записът остава в историята на промените.", "ok")
+        return redirect(url_for("employers"))
 
     @app.get("/attachments/<int:aid>")
     def attachment_get(aid):
@@ -730,6 +815,8 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
     def attachment_delete(aid):
         a = _one("SELECT * FROM attachment WHERE id=?", aid)
         get_db().execute("DELETE FROM attachment WHERE id=?", (aid,))
+        auth.log("delete", "attachment", aid, _owner_label(a["owner_type"], a["owner_id"]),
+                 attach_categories.get(a["owner_type"], {}).get(a["category"], a["category"]), a["original_name"], "")
         get_db().commit()
         (Path(dbm.data_dir()) / "attachments" / a["stored_name"]).unlink(missing_ok=True)
         endpoint, arg, _ = owner_page[a["owner_type"]]
@@ -868,6 +955,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                                pdf=render.converter_name())
 
     @app.post("/cases/<int:case_id>/delete")
+    @auth.super_required
     def case_delete(case_id):
         _one('SELECT id FROM "case" WHERE id=?', case_id)
         if get_db().execute("SELECT 1 FROM generation WHERE case_id=?", (case_id,)).fetchone():

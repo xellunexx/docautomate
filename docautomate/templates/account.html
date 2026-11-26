@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Смяна на парола{% endblock %}
+{% block body %}
+<section class="panel narrow">
+  <h1>Смяна на парола</h1>
+  <form method="post" class="grid-form one-col">
+    <div class="field"><label for="a-old">Сегашна парола</label><input id="a-old" name="old_password" type="password" autocomplete="current-password" required></div>
+    <div class="field"><label for="a-new">Нова парола (поне 8 знака)</label><input id="a-new" name="password" type="password" autocomplete="new-password" required></div>
+    <div class="field"><label for="a-new2">Новата парола отново</label><input id="a-new2" name="password2" type="password" autocomplete="new-password" required></div>
+    <div class="form-actions"><button class="btn primary" title="Записва новата парола">Смени паролата</button></div>
+  </form>
+</section>
+{% endblock %}

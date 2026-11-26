@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Вход{% endblock %}
+{% block body %}
+<section class="panel narrow">
+  <h1>Вход</h1>
+  {% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" class="grid-form one-col">
+    <div class="field"><label for="l-user">Потребителско име</label><input id="l-user" name="username" autocomplete="username" required autofocus></div>
+    <div class="field"><label for="l-pass">Парола</label><input id="l-pass" name="password" type="password" autocomplete="current-password" required></div>
+    <div class="form-actions"><button class="btn primary" title="Влиза в програмата">Влез</button></div>
+  </form>
+  <p class="help">Нямате потребител или забравихте паролата? Обърнете се към супер юзъра.</p>
+</section>
+{% endblock %}

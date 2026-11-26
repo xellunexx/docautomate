@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Няма достъп{% endblock %}
+{% block body %}
+<section class="panel narrow">
+  <h1>Само за супер юзър</h1>
+  <p>Това действие (изтриване, история на промените, потребители) е само за супер юзър. Обърнете се към него.</p>
+  <p><a class="btn" href="{{ url_for('home') }}" title="Връща на началната страница">Към началото</a></p>
+</section>
+{% endblock %}

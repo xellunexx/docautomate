@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Първи потребител{% endblock %}
+{% block body %}
+<section class="panel narrow">
+  <h1>Първо пускане: създайте супер юзър</h1>
+  <p class="intro">Програмата вече иска вход с парола. Този първи потребител е <b>супер юзър</b>: може да трие записи, вижда историята на промените и добавя колегите.</p>
+  <form method="post" class="grid-form one-col">
+    <div class="field {{ 'has-error' if errors.username }}"><label for="s-user">Потребителско име</label><input id="s-user" name="username" value="{{ values.get('username', '') }}" autocomplete="username" required>{% if errors.username %}<p class="err">{{ errors.username }}</p>{% endif %}</div>
+    <div class="field"><label for="s-name">Име и фамилия</label><input id="s-name" name="full_name" value="{{ values.get('full_name', '') }}"><p class="help">Показва се в Assigned и в историята</p></div>
+    <div class="field"><label for="s-mail">Имейл</label><input id="s-mail" name="email" type="email" value="{{ values.get('email', '') }}"><p class="help">За ежедневните рапорти по-късно</p></div>
+    <div class="field {{ 'has-error' if errors.password }}"><label for="s-pass">Парола (поне 8 знака)</label><input id="s-pass" name="password" type="password" autocomplete="new-password" required>{% if errors.password %}<p class="err">{{ errors.password }}</p>{% endif %}</div>
+    <div class="field {{ 'has-error' if errors.password2 }}"><label for="s-pass2">Паролата отново</label><input id="s-pass2" name="password2" type="password" autocomplete="new-password" required>{% if errors.password2 %}<p class="err">{{ errors.password2 }}</p>{% endif %}</div>
+    <div class="form-actions"><button class="btn primary" title="Създава първия потребител и влиза с него">Създай и влез</button></div>
+  </form>
+</section>
+{% endblock %}

@@ -43,6 +43,11 @@
 {% if p.dh_duties %}<span class="tag" title="Длъжностната характеристика е попълнена">ДХ ✓</span>{% else %}<span class="tag warn" title="Длъжностната характеристика ще излезе празна">без ДХ</span>{% endif %}</td></tr>
 {% endfor %}</tbody></table>
 {% else %}<p class="empty">Фирмата още няма длъжности.</p>{% endif %}
+{% if current_user.is_super %}
+<form method="post" action="{{ url_for('employer_delete', eid=row.id) }}" class="danger-zone" onsubmit="return confirm('Да изтрия ли работодателя? Не може да се върне.')">
+  <button class="btn danger" title="Изтрива работодателя, ако няма работници и случаи. Само за супер юзър.">Изтрий работодателя</button>
+</form>
+{% endif %}
 {% endif %}
 {% endblock %}
 {% block scripts %}

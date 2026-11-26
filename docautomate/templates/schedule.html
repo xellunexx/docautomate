@@ -9,7 +9,7 @@
 <table class="list sched">
   <thead><tr>
     <th class="num">№</th><th>Статус</th><th>Работодател</th><th>Име на латиница</th><th>Име на кирилица</th><th>Дата на раждане</th>
-    <th>Паспорт №</th><th>Страна</th><th>Тип виза</th><th>Контакт</th><th>Входящ номер</th>
+    <th>Паспорт №</th><th>Страна</th><th>Тип виза</th><th>Контакт</th><th>Assigned</th><th>Входящ номер</th>
     {% for k, label in date_fields %}<th>{{ sort_link(k, label) }}</th>{% endfor %}
     <th class="addinfo-col"><button type="button" class="btn link addinfo-toggle" title="Показва или скрива автоматичните колони: създаден, смяна на статус, дни в статус, забавяне, дни до изтичане">Addition info</button></th>
     <th class="addinfo">{{ sort_link('created_at', 'Създаден') }}</th><th class="addinfo">Смяна на статус</th><th class="addinfo num">Дни в статус</th>
@@ -28,6 +28,10 @@
     <td><a href="{{ url_for('candidate', cid=r.id) }}" title="Отваря профила на работника">{{ r.name_lat }}</a></td>
     <td>{{ r.name_cyr }}</td><td>{{ r.birth_date|bgdate }}</td><td>{{ r.passport_no }}</td><td>{{ r.citizenship or '' }}</td>
     <td>{{ r.visa_type }}</td><td>{{ r.contact }}</td>
+    <td><select class="cell" data-field="assigned_user_id" aria-label="Assigned">
+      <option value="">Без отговорник</option>
+      {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if r.assigned_user_id == u.id }}>{{ u.full_name or u.username }}</option>{% endfor %}
+    </select></td>
     <td><input class="cell" data-field="in_no" value="{{ r.in_no }}" aria-label="Входящ номер"></td>
     {% for k, label in date_fields %}<td><input class="cell date" data-field="{{ k }}" value="{{ r[k]|bgdate }}" placeholder="дд.мм.гггг" aria-label="{{ label }}"></td>{% endfor %}
     <td class="addinfo-col"></td>
@@ -55,8 +59,11 @@
   <select name="delay" aria-label="Забавяне"><option value="">Всякакво забавяне</option>
     <option value="red" {{ 'selected' if f_delay == 'red' }}>само червени</option>
     <option value="orange" {{ 'selected' if f_delay == 'orange' }}>само оранжеви</option></select>
+  <select name="assigned" aria-label="Assigned"><option value="">Всички отговорници</option>
+    <option value="-" {{ 'selected' if f_assigned == '-' }}>Без отговорник</option>
+    {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if f_assigned == u.id|string }}>{{ u.full_name or u.username }}</option>{% endfor %}</select>
   <select name="group" aria-label="Групиране"><option value="">Без групиране</option>
-    {% for k, l in [('status', 'по статус'), ('visa', 'по тип виза'), ('employer', 'по работодател'), ('contact', 'по контакт')] %}
+    {% for k, l in [('status', 'по статус'), ('visa', 'по тип виза'), ('employer', 'по работодател'), ('contact', 'по контакт'), ('assigned', 'по Assigned')] %}
     <option value="{{ k }}" {{ 'selected' if group == k }}>Групирай {{ l }}</option>{% endfor %}</select>
   {% if sort %}<input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ 'desc' if desc else 'asc' }}">{% endif %}
   <button class="btn" title="Прилага филтрите и групирането">Покажи</button>

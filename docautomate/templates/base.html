@@ -10,6 +10,7 @@
 <body>
 <header class="top">
   <a class="brand" href="{{ url_for('home') }}" title="Начална страница: преглед и бърз старт"><span class="brand-mark" aria-hidden="true">D</span><span class="brand-text">Docautomate<small>Документи за чужденци</small></span></a>
+  {% if current_user %}
   <nav aria-label="Главно меню">
     {% set ep = request.endpoint or '' %}
     <a href="{{ url_for('employers') }}" class="{{ 'on' if ep.startswith('employer') or ep == 'position' }}"
@@ -29,7 +30,19 @@
        title="Държави: имената на гражданството на български и руски, както влизат в документите.">Държави</a>
     <a href="{{ url_for('import_page') }}" class="minor {{ 'on' if ep == 'import_page' }}"
        title="Импорт: еднократно прехвърляне на кандидатите от Airtable.">Импорт</a>
+    {% if current_user.is_super %}
+    <a href="{{ url_for('users') }}" class="minor {{ 'on' if ep == 'users' }}"
+       title="Потребители: кой има достъп, супер юзъри, нови пароли. Само за супер юзър.">Потребители</a>
+    <a href="{{ url_for('history') }}" class="minor {{ 'on' if ep == 'history' }}"
+       title="История на промените: кой, кога и какво е променил. Само за супер юзър.">История на промените</a>
+    {% endif %}
   </nav>
+  <div class="who">
+    <span title="Влезли сте като този потребител">{{ current_user.full_name or current_user.username }}{% if current_user.is_super %} · супер юзър{% endif %}</span>
+    <a href="{{ url_for('account') }}" title="Смяна на собствената парола">парола</a>
+    <form method="post" action="{{ url_for('logout') }}" class="inline"><button class="btn link" title="Излиза от програмата на този компютър">изход</button></form>
+  </div>
+  {% endif %}
 </header>
 <main>
   {% with msgs = get_flashed_messages(with_categories=true) %}
