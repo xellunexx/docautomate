@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Docautomate{% endblock %} · Docautomate</title>
+<link rel="preload" href="{{ url_for('static', filename='fonts/golos-text-cyrillic-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="{{ url_for('home') }}" title="Начална страница: преглед и бърз старт">Docautomate</a>
+  <a class="brand" href="{{ url_for('home') }}" title="Начална страница: преглед и бърз старт"><span class="brand-mark" aria-hidden="true">D</span><span class="brand-text">Docautomate<small>Документи за чужденци</small></span></a>
   <nav aria-label="Главно меню">
     {% set ep = request.endpoint or '' %}
     <a href="{{ url_for('cases') }}" class="{{ 'on' if ep.startswith('case') and ep != 'case_types' }}"
@@ -19,7 +20,7 @@
        title="Работодатели: данни за фирмите и техните длъжности (обосновка, длъжностна характеристика).">Работодатели</a>
     <a href="{{ url_for('templates') }}" class="{{ 'on' if ep.startswith('template') or ep == 'placeholders' }}"
        title="Бланки: Word файловете, от които се правят документите. Качване и избор за всеки вид случай.">Бланки</a>
-    <span class="sep"></span>
+    <span class="sep">Настройки</span>
     <a href="{{ url_for('case_types') }}" class="minor {{ 'on' if ep == 'case_types' }}"
        title="Видове случаи: например 3 години, 3 месеца, удължаване. Видът избира кои бланки се генерират.">Видове случаи</a>
     <a href="{{ url_for('countries') }}" class="minor {{ 'on' if ep == 'countries' }}"
