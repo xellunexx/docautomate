@@ -96,6 +96,46 @@
     </tbody></table>{% endif %}
   </details>
 </section>
+<section class="panel" id="documents">
+  <div class="head-row"><h2>Документи за „Миграция“</h2>
+    <form method="post" action="{{ url_for('worker_generate', cid=row.id) }}">
+      <button class="btn primary" {{ 'disabled' if plan.error or not plan.templates }}
+        title="Попълва бланките от комплекта за типа виза с данните от профила и работодателя. Всеки път прави нов комплект; старите остават.">Генерирай документи{% if plan.templates %} ({{ plan.templates|length }}){% endif %}</button>
+    </form>
+  </div>
+  {% if plan.error %}<p class="flash error">{{ plan.error }}</p>
+  {% else %}
+  <p class="help">Комплект за тип виза „{{ row.visa_type }}“ ({{ plan.case_type.name }}). Трудовият договор е на руски за Узбекистан и Киргизстан и на английски за всички останали; Invitation Letter е само за Индия и Непал. Условията по договора (срок, заплата…) се пазят в <a href="{{ url_for('case_edit', case_id=plan.case_id) if plan.case_id else url_for('case_edit', candidate_id=row.id) }}" title="Отваря условията по договора за този работник">случая</a>.</p>
+  {% if not pdf %}<p class="help">Няма програма за PDF на този компютър: правят се само Word файлове.</p>{% endif %}
+  <ul class="tpl-list">
+  {% for item in plan.templates %}
+    <li><b>{{ item.t.name }}</b>
+      {% if item.missing %}<span class="tag warn" title="Тези полета ще излязат като празен ред „……“">липсват {{ item.missing|length }}</span>
+        <details><summary title="Показва кои данни липсват">Кои?</summary><p class="small">{% for k, label in item.missing %}{{ label }}{{ ', ' if not loop.last }}{% endfor %}</p></details>
+      {% else %}<span class="tag ok" title="Всички полета на тази бланка имат стойност">всичко е попълнено</span>{% endif %}</li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+  {% set g_list, g_files = gens %}
+  {% if g_list %}
+  <h3>Генерирани документи</h3>
+  <p class="help">Най-новият комплект е най-горе. Word (.docx) е за корекции; PDF е за преглед и печат.</p>
+  {% for g in g_list %}
+  <div class="gen">
+    <div class="head-row"><h4>{{ g.created_at[:10]|bgdate }} {{ g.created_at[11:16] }} · {{ g.ctype }}</h4>
+      <span>{% if g_files[g.id]|selectattr('docx_name')|list %}<a class="btn small" href="{{ url_for('generated_zip', gen_id=g.id, kind='docx') }}" title="Сваля всички Word файлове от този комплект в един .zip">Всички Word (zip)</a>{% endif %}
+      {% if g_files[g.id]|selectattr('pdf_name')|list %}<a class="btn small" href="{{ url_for('generated_zip', gen_id=g.id) }}" title="Сваля всички PDF от този комплект в един .zip">Всички PDF (zip)</a>{% endif %}</span></div>
+    <ul class="files">
+    {% for f in g_files[g.id] %}
+      <li>{% if f.docx_name %}<a href="{{ url_for('generated_file', gen_id=g.id, name=f.docx_name, dl=1) }}" title="Сваля попълнения Word файл">{{ f.template_name }} (Word)</a>{% else %}{{ f.template_name }}{% endif %}
+        {% if f.pdf_name %} · <a href="{{ url_for('generated_file', gen_id=g.id, name=f.pdf_name) }}" target="_blank" title="Отваря PDF в нов раздел">PDF</a>{% endif %}
+        {% if f.error and f.error != 'няма PDF' %} <span class="tag warn">{{ f.error }}</span>{% endif %}</li>
+    {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+  {% endif %}
+</section>
 <div id="attachments">{{ attachments(attach_groups, files, 'worker', row.id) }}</div>
 <h2>Случаи на работника</h2>
 {% if cases %}

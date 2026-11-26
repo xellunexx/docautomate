@@ -24,6 +24,13 @@ from .context import LIST_FIELDS, PLACEHOLDERS, build_context, flatten, missing_
 from .db import get_db
 
 ROOT = Path(__file__).resolve().parent.parent
+# Starting values of a new case (contract terms). Per visa type only the contract length differs.
+CASE_DEFAULTS = {"contract_months": 36, "probation_months": 6, "currency": "евро", "pay_day": "30",
+                 "leave_days": 20, "extra_leave_days": 0, "notice_months": 3,
+                 "working_time": "пълно работно време по график на смени при условията на сумирано "
+                                 "изчисляване на работното време /СИРВ/",
+                 "doc_city": "София"}
+CONTRACT_MONTHS = {"3 години": 36, "Удължаване": 12, "3 месеца": 3, "1 година": 12}
 EDITABLE_TEXT = {k for k, _ in sched.TEXT_FIELDS}
 EDITABLE_DATES = {k for k, _ in sched.DATE_FIELDS}
 MASTERS_DIR = ROOT / "masters"
@@ -91,15 +98,32 @@ def install_masters(conn, templates_dir: Path) -> None:
         shutil.copy2(src, templates_dir / fname)
         check = render.check_template(src)
         tid = conn.execute(
-            "INSERT INTO doc_template (name, filename, is_master, master_key, sort_order, placeholders)"
-            " VALUES (?,?,?,?,?,?)",
-            (item["name"], fname, 1, fname, (i + 1) * 10, ",".join(sorted(check.used))),
+            "INSERT INTO doc_template (name, filename, is_master, master_key, sort_order, placeholders,"
+            " countries, exclude_countries) VALUES (?,?,?,?,?,?,?,?)",
+            (item["name"], fname, 1, fname, (i + 1) * 10, ",".join(sorted(check.used)),
+             item.get("countries", ""), item.get("exclude_countries", "")),
         ).lastrowid
-        for ct_name in item.get("case_types", []):
-            ct = conn.execute("SELECT id FROM case_type WHERE name=?", (ct_name,)).fetchone()
-            if ct:
-                conn.execute("INSERT OR IGNORE INTO case_type_template VALUES (?,?)", (ct["id"], tid))
+        _link_case_types(conn, tid, item)
+    # One time: bring masters installed by older versions to the sets of the задание (раздел 04).
+    if not dbm.step_done(conn, "zadanie_template_sets"):
+        for i, item in enumerate(items):
+            t = conn.execute("SELECT id, countries, exclude_countries FROM doc_template WHERE master_key=?",
+                             (item["file"],)).fetchone()
+            if not t:
+                continue
+            conn.execute("DELETE FROM case_type_template WHERE template_id=?", (t["id"],))
+            _link_case_types(conn, t["id"], item)
+            conn.execute("UPDATE doc_template SET sort_order=?, countries=?, exclude_countries=? WHERE id=?",
+                         ((i + 1) * 10, t["countries"] or item.get("countries", ""),
+                          t["exclude_countries"] or item.get("exclude_countries", ""), t["id"]))
     conn.commit()
+
+
+def _link_case_types(conn, template_id, item):
+    for ct_name in item.get("case_types", []):
+        ct = conn.execute("SELECT id FROM case_type WHERE name=?", (ct_name,)).fetchone()
+        if ct:
+            conn.execute("INSERT OR IGNORE INTO case_type_template VALUES (?,?)", (ct["id"], template_id))
 
 
 # ---------------------------------------------------------------- helpers
@@ -136,12 +160,32 @@ def _safe_name(text: str) -> str:
     return re.sub(r"\s+", " ", text)[:80] or "документ"
 
 
-def _templates_for_case_type(case_type_id):
-    return get_db().execute(
+def _iso_set(text) -> set[str]:
+    return {x.strip().upper() for x in (text or "").replace(";", ",").split(",") if x.strip()}
+
+
+def template_applies(t, iso3) -> bool:
+    """Country rule of a template (задание 04): RU contract for UZB/KGZ, EN for the rest, letter for IND/NPL."""
+    only, exclude = _iso_set(t["countries"]), _iso_set(t["exclude_countries"])
+    iso3 = (iso3 or "").upper()
+    if only and iso3 not in only:
+        return False
+    return not (exclude and iso3 in exclude)
+
+
+def _templates_for_case_type(case_type_id, iso3=None, by_country=True):
+    rows = get_db().execute(
         "SELECT t.* FROM doc_template t JOIN case_type_template ct ON ct.template_id=t.id"
         " WHERE ct.case_type_id=? AND t.is_active=1 ORDER BY t.sort_order, t.name",
         (case_type_id,),
     ).fetchall()
+    return [t for t in rows if template_applies(t, iso3)] if by_country else rows
+
+
+def _case_iso3(case_id):
+    r = get_db().execute('SELECT co.iso3 FROM "case" c JOIN candidate ca ON ca.id=c.candidate_id'
+                         " LEFT JOIN country co ON co.id=ca.citizenship_id WHERE c.id=?", (case_id,)).fetchone()
+    return r["iso3"] if r else None
 
 
 def _template_path(t) -> Path:
@@ -281,7 +325,9 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                                statuses=sched.ALL_STATUSES, sched_text=sched.TEXT_FIELDS,
                                sched_dates=sched.DATE_FIELDS,
                                history=d.execute("SELECT * FROM status_history WHERE candidate_id=?"
-                                                 " ORDER BY id DESC", (cid or 0,)).fetchall())
+                                                 " ORDER BY id DESC", (cid or 0,)).fetchall(),
+                               plan=worker_doc_plan(cid) if row else None,
+                               gens=_worker_generations(cid) if row else ([], {}), pdf=render.converter_name())
 
     # ------------------------------------------------------------ Справки (График)
     sort_fields = {k for k, _ in sched.DATE_FIELDS} | {"created_at"}
@@ -389,6 +435,102 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         if not errors:
             flash("Данните от графика са записани.", "ok")
         return redirect(url_for("candidate", cid=cid) + "#schedule")
+
+    # ------------------------------------------------------------ documents from the worker profile
+    def _case_type_for_visa(visa_type):
+        d = get_db()
+        if visa_type == "Удължаване":
+            return d.execute("SELECT * FROM case_type WHERE is_extension=1 ORDER BY sort_order LIMIT 1").fetchone()
+        return d.execute("SELECT * FROM case_type WHERE is_extension=0 AND residence_period=? ORDER BY sort_order"
+                         " LIMIT 1", (visa_type,)).fetchone()
+
+    def worker_doc_plan(cid):
+        """What „Генерирай документи“ would do now: the case type from „Тип виза“, the existing case (if any),
+        and each template of the set with its missing fields (задание 04, стъпки 01-03)."""
+        d = get_db()
+        w = _one("SELECT ca.*, co.iso3 FROM candidate ca LEFT JOIN country co ON co.id=ca.citizenship_id"
+                 " WHERE ca.id=?", cid)
+        plan = {"error": "", "case_type": None, "case_id": None, "templates": []}
+        if not w["visa_type"]:
+            plan["error"] = "Изберете „Тип виза“ в профила. Той определя кои бланки се генерират."
+            return plan
+        ct = _case_type_for_visa(w["visa_type"])
+        if not ct:
+            plan["error"] = (f"За тип виза „{w['visa_type']}“ още няма зададен комплект бланки"
+                             " (в заданието списъкът за 1 година е за уточняване).")
+            return plan
+        plan["case_type"] = ct
+        case = d.execute('SELECT id FROM "case" WHERE candidate_id=? AND case_type_id=? ORDER BY id DESC LIMIT 1',
+                         (cid, ct["id"])).fetchone()
+        if case:
+            plan["case_id"] = case["id"]
+        if not w["employer_id"]:
+            plan["error"] = "Изберете работодател в профила."
+            return plan
+        # the profile is the source of truth for employer and position; the case keeps the contract terms
+        case_row = d.execute('SELECT * FROM "case" WHERE id=?', (case["id"],)).fetchone() if case else None
+        ctx = _worker_context(d, w, ct, dict(case_row) if case_row else None)
+        for t in _templates_for_case_type(ct["id"], w["iso3"]):
+            used = set(filter(None, t["placeholders"].split(",")))
+            plan["templates"].append({"t": t, "missing": [(k, PLACEHOLDERS[k][0])
+                                                          for k in missing_fields(ctx, used)]})
+        return plan
+
+    def _worker_context(d, w, ct, case):
+        """Preview context from the worker profile (employer, position) and the case terms; when the worker
+        has no case yet, the defaults a new case would get. Writes nothing."""
+        from .context import assemble, housing_workers
+        emp = d.execute("SELECT * FROM employer WHERE id=?", (w["employer_id"],)).fetchone()
+        pos = d.execute("SELECT * FROM position WHERE id=?", (w["position_id"],)).fetchone() if w["position_id"] else None
+
+        def country(i):
+            return d.execute("SELECT * FROM country WHERE id=?", (i,)).fetchone() if i else None
+        case = case or {**CASE_DEFAULTS, "contract_months": CONTRACT_MONTHS.get(w["visa_type"], 36)}
+        ctx = assemble(dict(w), dict(emp), dict(pos) if pos else {}, case, dict(ct),
+                       country(w["citizenship_id"]), country(w["birth_country_id"]))
+        ctx["housing_workers"] = housing_workers(d, w)
+        return ctx
+
+    @app.post("/candidates/<int:cid>/generate")
+    def worker_generate(cid):
+        """„Генерирай документи“: pick the set by visa type, create or update the worker's case, fill the set."""
+        d = get_db()
+        plan = worker_doc_plan(cid)
+        back = url_for("candidate", cid=cid) + "#documents"
+        if plan["error"]:
+            flash(plan["error"], "error")
+            return redirect(back)
+        w = d.execute("SELECT * FROM candidate WHERE id=?", (cid,)).fetchone()
+        case_id = plan["case_id"]
+        if case_id:
+            d.execute('UPDATE "case" SET employer_id=?, position_id=?, updated_at=datetime(\'now\',\'localtime\')'
+                      " WHERE id=?", (w["employer_id"], w["position_id"], case_id))
+            d.commit()
+        else:
+            case_id = _insert("case", {**CASE_DEFAULTS, "contract_months": CONTRACT_MONTHS.get(w["visa_type"], 36),
+                                       "candidate_id": cid, "employer_id": w["employer_id"],
+                                       "position_id": w["position_id"], "case_type_id": plan["case_type"]["id"]})
+        gen_id, errors = generate_case(case_id)
+        missing = sum(1 for t in plan["templates"] if t["missing"])
+        if gen_id is None:
+            flash(errors[0] if errors else "Нищо не е генерирано.", "error")
+        elif errors:
+            flash("Част от документите не са готови: " + "; ".join(errors), "error")
+        else:
+            msg = f"Документите са генерирани ({len(plan['templates'])}). Свалете ги по-долу."
+            if missing:
+                msg += f" В {missing} от тях има празни полета (излизат като „……“)."
+            flash(msg, "ok")
+        return redirect(back)
+
+    def _worker_generations(cid):
+        d = get_db()
+        gens = d.execute('SELECT g.*, ct.name AS ctype FROM generation g JOIN "case" c ON c.id=g.case_id'
+                         " JOIN case_type ct ON ct.id=c.case_type_id WHERE c.candidate_id=?"
+                         " ORDER BY g.created_at DESC, g.id DESC LIMIT 20", (cid,)).fetchall()
+        files = {g["id"]: d.execute("SELECT * FROM generated_file WHERE generation_id=? ORDER BY id",
+                                    (g["id"],)).fetchall() for g in gens}
+        return gens, files
 
     def _worker_choices():
         d = get_db()
@@ -655,11 +797,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
             values["copied_from_id"] = copy_id
             values["candidate_id"] = request.args.get("candidate_id", type=int)
         else:
-            values = {"contract_months": 36, "probation_months": 6, "currency": "евро", "pay_day": "30",
-                      "leave_days": 20, "extra_leave_days": 0, "notice_months": 3,
-                      "working_time": "пълно работно време по график на смени при условията на сумирано "
-                                      "изчисляване на работното време /СИРВ/",
-                      "doc_city": "София",
+            values = {**CASE_DEFAULTS,
                       "candidate_id": request.args.get("candidate_id", type=int),
                       "employer_id": request.args.get("employer_id", type=int)}
             w = d.execute("SELECT employer_id, position_id, visa_type FROM candidate WHERE id=?",
@@ -718,7 +856,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                  " WHERE c.id=?", case_id)
         ctx = build_context(d, case_id)
         tpls = []
-        for t in _templates_for_case_type(c["case_type_id"]):
+        for t in _templates_for_case_type(c["case_type_id"], _case_iso3(case_id)):
             used = set(filter(None, t["placeholders"].split(",")))
             miss = missing_fields(ctx, used)
             tpls.append({"t": t, "missing": [(k, PLACEHOLDERS[k][0]) for k in miss]})
@@ -756,7 +894,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         d = get_db()
         c = _one('SELECT c.*, ca.name_cyr FROM "case" c JOIN candidate ca ON ca.id=c.candidate_id WHERE c.id=?',
                  case_id)
-        tpls = _templates_for_case_type(c["case_type_id"])
+        tpls = _templates_for_case_type(c["case_type_id"], _case_iso3(case_id))
         if not tpls:
             return None, ["Няма избрани бланки за този вид случай (Бланки → отметнете вида случай)."]
         ctx = build_context(d, case_id)
@@ -824,13 +962,15 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         g = _one("SELECT * FROM generation WHERE id=?", gen_id)
         base = Path(dbm.data_dir()) / "generated" / g["folder"]
         buf = io.BytesIO()
+        col = "docx_name" if request.args.get("kind") == "docx" else "pdf_name"
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            for r in get_db().execute("SELECT pdf_name FROM generated_file WHERE generation_id=? AND pdf_name<>''",
+            for r in get_db().execute(f"SELECT {col} FROM generated_file WHERE generation_id=? AND {col}<>''",
                                       (gen_id,)):
-                z.write(base / r["pdf_name"], r["pdf_name"])
+                z.write(base / r[col], Path(r[col]).name)
         buf.seek(0)
+        kind = "word" if col == "docx_name" else "pdf"
         return send_file(buf, mimetype="application/zip", as_attachment=True,
-                         download_name=f"sluchai-{g['case_id']}-{Path(g['folder']).name}.zip")
+                         download_name=f"dokumenti-{kind}-{g['case_id']}-{Path(g['folder']).name}.zip")
 
     # ------------------------------------------------------------ templates
     @app.get("/templates")
@@ -884,9 +1024,11 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
     def template_settings(tid):
         d = get_db()
         _one("SELECT id FROM doc_template WHERE id=?", tid)
-        d.execute("UPDATE doc_template SET name=?, is_active=?, sort_order=? WHERE id=?",
+        iso = lambda k: ",".join(sorted(_iso_set(request.form.get(k, ""))))  # noqa: E731
+        d.execute("UPDATE doc_template SET name=?, is_active=?, sort_order=?, countries=?, exclude_countries=?"
+                  " WHERE id=?",
                   (request.form.get("name", "").strip() or "Бланка", 1 if request.form.get("is_active") else 0,
-                   request.form.get("sort_order", type=int) or 100, tid))
+                   request.form.get("sort_order", type=int) or 100, iso("countries"), iso("exclude_countries"), tid))
         d.execute("DELETE FROM case_type_template WHERE template_id=?", (tid,))
         for ct in request.form.getlist("case_types"):
             d.execute("INSERT OR IGNORE INTO case_type_template VALUES (?,?)", (int(ct), tid))

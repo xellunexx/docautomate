@@ -21,6 +21,11 @@ CANDIDATE_FORMS = {
     "ru_grazhdanin": ("гражданин", "гражданка"),
     "ru_rodilsya": ("родился", "родилась"),
     "ru_imenuemyi": ("именуемый", "именуемая"),
+    # English contract and Invitation Letter
+    "en_title": ("Mr", "Ms"),
+    "en_he": ("he", "she"),
+    "en_him": ("him", "her"),
+    "en_his": ("his", "her"),
 }
 
 REPRESENTATIVE_FORMS = {
@@ -75,6 +80,26 @@ def words_ru(n: int) -> str:
         return _RU_UNITS[n]
     tens, unit = divmod(n, 10)
     return _RU_TENS[tens] if unit == 0 else f"{_RU_TENS[tens]} {_RU_UNITS[unit]}"
+
+
+_EN_UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+             "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+             "nineteen"]
+_EN_TENS = {2: "twenty", 3: "thirty", 4: "forty", 5: "fifty", 6: "sixty"}
+
+
+def words_en(n: int) -> str:
+    """English words for 0..69."""
+    if n < 0 or n > 69:
+        return str(n)
+    if n < 20:
+        return _EN_UNITS[n]
+    tens, unit = divmod(n, 10)
+    return _EN_TENS[tens] if unit == 0 else f"{_EN_TENS[tens]}-{_EN_UNITS[unit]}"
+
+
+def months_en(n: int) -> str:
+    return "month" if n == 1 else "months"
 
 
 def months_bg(n: int) -> str:

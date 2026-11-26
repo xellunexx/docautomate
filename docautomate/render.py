@@ -83,7 +83,8 @@ def check_template(path: Path) -> TemplateCheck:
         dotted, bare = _collect(ast)
         res.used |= dotted
         for name in bare - TOP_LEVEL:
-            res.unknown.append(name)
+            # top-level placeholders without a dot (e.g. housing_workers) are listed in PLACEHOLDERS too
+            (res.used.add if name in PLACEHOLDERS else res.unknown.append)(name)
         if "today" in bare:
             res.used.add("today")
     res.unknown += sorted(k for k in res.used if k not in PLACEHOLDERS)

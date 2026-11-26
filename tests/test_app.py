@@ -7,6 +7,16 @@ import docx
 from conftest import needs_pdf
 from docautomate.db import connect
 
+import json
+
+_MANIFEST = json.loads((Path(__file__).resolve().parent.parent / "masters" / "manifest.json").read_text("utf-8"))
+N_MASTERS = len(_MANIFEST)
+N_LINKS = sum(len(m["case_types"]) for m in _MANIFEST)
+# the test case is a 3-year case for an Uzbek worker: every 3-year master except the English contract
+# and the Invitation Letter (India and Nepal only)
+N_3Y_UZB = sum(1 for m in _MANIFEST if "Единно разрешение – 3 години (чл. 24и)" in m["case_types"]
+               and "UZB" not in m.get("exclude_countries", "") and m.get("countries", "UZB").count("UZB"))
+
 
 def _id_from(resp):
     return int(re.search(r"/(\d+)(?:/edit)?$", resp.headers["Location"]).group(1))
@@ -104,7 +114,7 @@ def test_generate_pdfs_and_keep_history(client, app):
     assert "Документите са генерирани." in html, html[:2000]
     conn = connect(Path(app.config["DATABASE"]))
     files = conn.execute("SELECT * FROM generated_file").fetchall()
-    assert len(files) == 6 and all(f["pdf_name"] and not f["error"] for f in files)
+    assert len(files) == N_3Y_UZB and all(f["pdf_name"] and not f["error"] for f in files)
     gen = conn.execute("SELECT * FROM generation").fetchone()
     folder = Path(app.config["DATA_DIR"]) / "generated" / gen["folder"]
     for f in files:
@@ -201,9 +211,9 @@ def test_masters_installed_once(app, tmp_path):
     from docautomate.app import create_app
     create_app(data_dir=Path(app.config["DATA_DIR"]), testing=True)  # second start
     conn = connect(Path(app.config["DATABASE"]))
-    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == 6
+    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == N_MASTERS
     n = conn.execute("SELECT count(*) FROM case_type_template").fetchone()[0]
-    assert n == 6 + 2 + 2
+    assert n == N_LINKS
     conn.close()
 
 
@@ -236,7 +246,7 @@ def test_replaced_master_is_not_reinstalled(client, app):
     client.post("/templates/upload", data={"file": (io.BytesIO(buf.getvalue()), "o.docx"), "replace_id": str(tid)},
                 content_type="multipart/form-data")
     create_app(data_dir=Path(app.config["DATA_DIR"]), testing=True)  # restart
-    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == 6
+    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == N_MASTERS
     conn.close()
 
 
@@ -249,10 +259,11 @@ def test_old_database_with_renamed_replaced_master_gets_no_duplicate(client, app
     conn.execute("UPDATE doc_template SET master_key=NULL")
     conn.commit()
     create_app(data_dir=Path(app.config["DATA_DIR"]), testing=True)  # restart = migration + install
-    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == 6
-    assert conn.execute("SELECT count(*) FROM doc_template WHERE master_key IS NOT NULL").fetchone()[0] == 5
+    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == N_MASTERS
+    assert conn.execute("SELECT count(*) FROM doc_template WHERE master_key IS NOT NULL").fetchone()[0] \
+        == N_MASTERS - 1
     create_app(data_dir=Path(app.config["DATA_DIR"]), testing=True)  # stays stable on later starts
-    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == 6
+    assert conn.execute("SELECT count(*) FROM doc_template").fetchone()[0] == N_MASTERS
     conn.close()
 
 
@@ -270,6 +281,6 @@ def test_same_template_names_do_not_overwrite_and_partial_pdf_kept(client, app, 
     monkeypatch.setattr(render, "to_pdf", fake_pdf)
     client.post(f"/cases/{case_id}/generate")
     rows = conn.execute("SELECT docx_name, pdf_name FROM generated_file").fetchall()
-    assert len({r["docx_name"] for r in rows}) == 6  # six distinct files
+    assert len({r["docx_name"] for r in rows}) == N_3Y_UZB  # distinct files despite the same name
     assert sum(1 for r in rows if r["pdf_name"]) == 1  # the converted one is kept
     conn.close()

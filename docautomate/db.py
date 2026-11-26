@@ -6,7 +6,7 @@ from pathlib import Path
 
 from flask import current_app, g
 
-from .countries import COUNTRIES
+from .countries import COUNTRIES, COUNTRY_EN
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -254,6 +254,12 @@ CREATE TABLE IF NOT EXISTS status_history (
     changed_by TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS ix_status_history_candidate ON status_history(candidate_id);
+
+-- One-time data steps already applied to this database.
+CREATE TABLE IF NOT EXISTS applied_step (
+    name TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
 """
 
 # Columns added after v1. ALTER TABLE keeps existing databases and their data.
@@ -282,6 +288,19 @@ _ADDED_COLUMNS = {
     ],
     "employer": [
         ("ref_no", "INTEGER"),
+    ],
+    "country": [
+        ("name_en", "TEXT NOT NULL DEFAULT ''"),
+        ("embassy", "TEXT NOT NULL DEFAULT ''"),
+    ],
+    # Which workers a template is for, by ISO3 of the country of origin (задание 04):
+    # countries = only these; exclude_countries = all except these. Both empty = everyone.
+    "doc_template": [
+        ("countries", "TEXT NOT NULL DEFAULT ''"),
+        ("exclude_countries", "TEXT NOT NULL DEFAULT ''"),
+    ],
+    "position": [
+        ("obosnovka_ext", "TEXT NOT NULL DEFAULT ''"),
     ],
 }
 
@@ -395,7 +414,18 @@ def init_db(conn: sqlite3.Connection) -> None:
             " VALUES (?,?,?,?,?)",
             (name, ground, period, ext, sort),
         )
+    for iso3, (name_en, embassy) in COUNTRY_EN.items():  # only fills what staff left empty
+        conn.execute("UPDATE country SET name_en=? WHERE iso3=? AND name_en=''", (name_en, iso3))
+        conn.execute("UPDATE country SET embassy=? WHERE iso3=? AND embassy=''", (embassy, iso3))
     conn.commit()
+
+
+def step_done(conn: sqlite3.Connection, name: str) -> bool:
+    """True if the one-time step ran before; otherwise records it (the caller then runs it)."""
+    if conn.execute("SELECT 1 FROM applied_step WHERE name=?", (name,)).fetchone():
+        return True
+    conn.execute("INSERT INTO applied_step (name) VALUES (?)", (name,))
+    return False
 
 
 def find_country(conn: sqlite3.Connection, text: str | None):

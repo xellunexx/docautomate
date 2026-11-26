@@ -49,3 +49,38 @@ COUNTRIES = [
     ("CHN", "Китай", "Китайска народна република", "Китайской Народной Республики",
      "Китайской Народной Республикой", []),
 ]
+
+# English official names for the English contract and the Invitation Letter, and the Bulgarian
+# embassy that issues the D visa (used in the Invitation Letter). Editable in the app (Държави).
+COUNTRY_EN = {
+    "UZB": ("Republic of Uzbekistan", ""),
+    "NPL": ("Federal Democratic Republic of Nepal", "New Delhi, India"),
+    "IND": ("Republic of India", "New Delhi, India"),
+    "KGZ": ("Kyrgyz Republic", ""),
+    "TJK": ("Republic of Tajikistan", ""),
+    "KAZ": ("Republic of Kazakhstan", ""),
+    "TKM": ("Turkmenistan", ""),
+    "BGD": ("People's Republic of Bangladesh", ""),
+    "LKA": ("Democratic Socialist Republic of Sri Lanka", ""),
+    "PHL": ("Republic of the Philippines", ""),
+    "VNM": ("Socialist Republic of Vietnam", ""),
+    "IDN": ("Republic of Indonesia", ""),
+    "PAK": ("Islamic Republic of Pakistan", ""),
+    "NGA": ("Federal Republic of Nigeria", ""),
+    "GHA": ("Republic of Ghana", ""),
+    "EGY": ("Arab Republic of Egypt", ""),
+    "MAR": ("Kingdom of Morocco", ""),
+    "TUR": ("Republic of Türkiye", ""),
+    "GEO": ("Georgia", ""),
+    "ARM": ("Republic of Armenia", ""),
+    "AZE": ("Republic of Azerbaijan", ""),
+    "MDA": ("Republic of Moldova", ""),
+    "UKR": ("Ukraine", ""),
+    "SRB": ("Republic of Serbia", ""),
+    "MKD": ("Republic of North Macedonia", ""),
+    "ALB": ("Republic of Albania", ""),
+    "BLR": ("Republic of Belarus", ""),
+    "RUS": ("Russian Federation", ""),
+    "MNG": ("Mongolia", ""),
+    "CHN": ("People's Republic of China", ""),
+}

@@ -71,7 +71,7 @@ def test_masters_hold_no_known_names():
 
 
 def test_contract_uses_grammar_and_russian_forms(tmp_path):
-    out = render.fill_docx(next(p for p in MASTERS if "trudov" in p.name), sample_context(), tmp_path / "td.docx")
+    out = render.fill_docx(next(p for p in MASTERS if p.name == "trudov-dogovor-bg-ru.docx"), sample_context(), tmp_path / "td.docx")
     t = _text(out)
     assert "гражданин на Република Узбекистан, роден на 01.01.1985" in t
     assert "гражданин Республики Узбекистан, родился 01.01.1985" in t

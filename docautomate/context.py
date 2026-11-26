@@ -60,6 +60,11 @@ PLACEHOLDERS: dict[str, tuple[str, str]] = {
     "candidate.ru_grazhdanin": ("RU: гражданин / гражданка", "гражданин"),
     "candidate.ru_rodilsya": ("RU: родился / родилась", "родился"),
     "candidate.ru_imenuemyi": ("RU: именуемый / именуемая", "именуемый"),
+    "candidate.en_title": ("EN: Mr / Ms", "Mr"),
+    "candidate.en_he": ("EN: he / she", "he"),
+    "candidate.en_him": ("EN: him / her", "him"),
+    "candidate.en_his": ("EN: his / her", "his"),
+    "candidate.ref_no": ("Уникален номер на работника", "1001"),
     "candidate.birth_date": ("Дата на раждане", "01.01.1985"),
     "candidate.birth_place": ("Място на раждане", "Tashkent"),
     "candidate.birth_country": ("Държава на раждане (официално име)", "Република Узбекистан"),
@@ -67,6 +72,8 @@ PLACEHOLDERS: dict[str, tuple[str, str]] = {
     "candidate.citizenship_short": ("Гражданство (кратко)", "Узбекистан"),
     "candidate.citizenship_ru_gen": ("RU: гражданство, род. падеж", "Республики Узбекистан"),
     "candidate.citizenship_ru_instr": ("RU: гражданство, твор. падеж", "Республикой Узбекистан"),
+    "candidate.citizenship_en": ("EN: гражданство (официално име)", "Republic of Uzbekistan"),
+    "candidate.embassy": ("Посолство за виза D (Invitation Letter)", "New Delhi, India"),
     "candidate.passport_no": ("Паспорт №", "AB1234567"),
     "candidate.passport_issue_date": ("Паспорт издаден на", "15.03.2020"),
     "candidate.passport_expiry": ("Паспорт валиден до", "14.03.2030"),
@@ -74,6 +81,7 @@ PLACEHOLDERS: dict[str, tuple[str, str]] = {
     "candidate.phone": ("Телефон", "0888123456"),
     "candidate.lnch": ("ЛНЧ", "1000000000"),
     "candidate.address_bg": ("Адрес в България", "гр. София, ул. Примерна 1"),
+    "candidate.residence_address": ("Адрес на местоживеене (декларация за жилище)", "гр. София, ж.к. Примерен, бл. 1"),
     "candidate.marital_status": ("Семейно положение", "неженен"),
     "candidate.education": ("Образование", "средно"),
     "candidate.specialty": ("Специалност", ""),
@@ -95,9 +103,10 @@ PLACEHOLDERS: dict[str, tuple[str, str]] = {
     "position.title_ru": ("Длъжност на руски (ако няма – българската)", "Подсобный рабочий"),
     "position.nkpd": ("Код по НКПД", "96220001"),
     "position.occupation_class": ("Клас професии", "неквалифицирани работници"),
-    "position.workplace": ("Място на работа (адрес)", "гр. София, ул. Работна 5"),
+    "position.workplace": ("Място на работа (адресът от профила на работника; ако няма – от длъжността)",
+                           "гр. София, ул. Работна 5"),
     "position.reporting_line": ("Пряко подчинение", "Управителя"),
-    "position.obosnovka": ("Обосновка – целият текст", "…"),
+    "position.obosnovka": ("Обосновка – целият текст (при удължаване – текстът за удължаване, ако има)", "…"),
     "position.obosnovka_paragraphs": ("Обосновка – списък абзаци (за {%p for %})", "[…]"),
     "position.dh_purpose": ("ДХ: основна цел", "…"),
     "position.dh_duties": ("ДХ: задължения – списък (по ред)", "[…]"),
@@ -120,6 +129,13 @@ PLACEHOLDERS: dict[str, tuple[str, str]] = {
     "case.probation_words_ru": ("RU: изпитателен срок с думи", "шесть"),
     "case.probation_unit_ru": ("RU: месяц/месяца/месяцев за изпит. срок", "месяцев"),
     "case.contract_unit_ru": ("RU: месяц/месяца/месяцев за срока", "месяцев"),
+    "case.contract_unit_en": ("EN: month/months за срока", "months"),
+    "case.contract_words_en": ("EN: срок на договора с думи", "thirty-six"),
+    "case.probation_words_en": ("EN: изпитателен срок с думи", "six"),
+    "case.probation_unit_en": ("EN: month/months за изпитателния срок", "months"),
+    "case.notice_words_en": ("EN: предизвестие с думи", "three"),
+    "case.notice_unit_en": ("EN: month/months за предизвестието", "months"),
+    "case.extra_leave_words_en": ("EN: доп. отпуск с думи", "zero"),
     "case.salary": ("Основно месечно възнаграждение", "1077.00"),
     "case.currency": ("Валута", "евро"),
     "case.pay_day": ("Ден на изплащане", "30"),
@@ -144,9 +160,11 @@ PLACEHOLDERS: dict[str, tuple[str, str]] = {
     "case.reg_no": ("Вх. № на заявлението", ""),
     "case.reg_date": ("Дата на входиране", ""),
     "today": ("Днешна дата", "26.11.2026"),
+    "housing_workers": ("Декларация по чл. 28: работниците на същия адрес – списък", "[…]"),
 }
 
 LIST_FIELDS = {
+    "housing_workers",
     "position.obosnovka_paragraphs", "position.dh_duties", "position.dh_responsibilities",
     "position.dh_rights", "position.dh_requirements", "position.dh_conditions",
 }
@@ -175,8 +193,22 @@ def build_context(conn: sqlite3.Connection, case_id: int) -> dict:
     pos = conn.execute("SELECT * FROM position WHERE id=?", (case["position_id"],)).fetchone() \
         if case["position_id"] else None
     ctype = conn.execute("SELECT * FROM case_type WHERE id=?", (case["case_type_id"],)).fetchone()
-    return assemble(dict(cand), dict(emp), dict(pos) if pos else {}, dict(case), dict(ctype),
-                    _country(conn, cand["citizenship_id"]), _country(conn, cand["birth_country_id"]))
+    ctx = assemble(dict(cand), dict(emp), dict(pos) if pos else {}, dict(case), dict(ctype),
+                   _country(conn, cand["citizenship_id"]), _country(conn, cand["birth_country_id"]))
+    ctx["housing_workers"] = housing_workers(conn, cand)
+    return ctx
+
+
+def housing_workers(conn, cand) -> list[str]:
+    """Workers for the seasonal housing declaration (чл. 28 ЗТМТМ): this worker plus the other workers of
+    the same employer, with the same visa type, living at the same address. Names as „кирилица/ латиница“."""
+    rows = [cand]
+    addr = (cand["residence_address"] or "").strip()
+    if addr and cand["employer_id"]:
+        rows += conn.execute(
+            "SELECT * FROM candidate WHERE employer_id=? AND visa_type=? AND trim(residence_address)=? AND id<>?"
+            " ORDER BY name_cyr", (cand["employer_id"], cand["visa_type"] or "", addr, cand["id"])).fetchall()
+    return ["/ ".join(x for x in (r["name_cyr"], r["name_lat"]) if x) for r in rows]
 
 
 def assemble(cand: dict, emp: dict, pos: dict, case: dict, ctype: dict,
@@ -205,6 +237,10 @@ def assemble(cand: dict, emp: dict, pos: dict, case: dict, ctype: dict,
         "citizenship_short": cit.get("name"),
         "citizenship_ru_gen": cit.get("name_ru_gen"),
         "citizenship_ru_instr": cit.get("name_ru_instr"),
+        "citizenship_en": cit.get("name_en"),
+        "embassy": cit.get("embassy"),
+        "ref_no": cand.get("ref_no"),
+        "residence_address": cand.get("residence_address"),
         "passport_no": cand.get("passport_no"),
         "passport_issue_date": grammar.fmt_date(cand.get("passport_issue_date")),
         "passport_expiry": grammar.fmt_date(cand.get("passport_expiry")),
@@ -230,15 +266,17 @@ def assemble(cand: dict, emp: dict, pos: dict, case: dict, ctype: dict,
         "phone": emp.get("phone"),
         "email": emp.get("email"),
     }
+    # Extensions have their own justification order (задание 04); fall back to the initial text.
+    obosnovka = (pos.get("obosnovka_ext") if ctype.get("is_extension") else None) or pos.get("obosnovka")
     position = {
         "title": pos.get("title"),
         "title_ru": pos.get("title_ru") or pos.get("title"),
         "nkpd": pos.get("nkpd"),
         "occupation_class": pos.get("occupation_class"),
-        "workplace": pos.get("workplace"),
+        "workplace": cand.get("workplace_address") or pos.get("workplace"),
         "reporting_line": pos.get("reporting_line"),
-        "obosnovka": pos.get("obosnovka"),
-        "obosnovka_paragraphs": _paragraphs(pos.get("obosnovka")),
+        "obosnovka": obosnovka,
+        "obosnovka_paragraphs": _paragraphs(obosnovka),
         "dh_purpose": pos.get("dh_purpose"),
         "dh_duties": _lines(pos.get("dh_duties")),
         "dh_responsibilities": _lines(pos.get("dh_responsibilities")),
@@ -267,6 +305,13 @@ def assemble(cand: dict, emp: dict, pos: dict, case: dict, ctype: dict,
         "probation_words_ru": grammar.words_ru(pm) if pm is not None else None,
         "probation_unit_ru": grammar.months_ru(pm) if pm is not None else None,
         "contract_unit_ru": grammar.months_ru(cm) if cm is not None else None,
+        "contract_unit_en": grammar.months_en(cm) if cm is not None else None,
+        "contract_words_en": grammar.words_en(cm) if cm is not None else None,
+        "probation_words_en": grammar.words_en(pm) if pm is not None else None,
+        "probation_unit_en": grammar.months_en(pm) if pm is not None else None,
+        "notice_words_en": grammar.words_en(nm) if nm is not None else None,
+        "notice_unit_en": grammar.months_en(nm) if nm is not None else None,
+        "extra_leave_words_en": grammar.words_en(xl) if xl is not None else None,
         "salary": grammar.fmt_money(case.get("salary")),
         "currency": case.get("currency"),
         "pay_day": case.get("pay_day"),
@@ -286,8 +331,9 @@ def assemble(cand: dict, emp: dict, pos: dict, case: dict, ctype: dict,
         "foreign_staff_count": case.get("foreign_staff_count"),
         "doc_city": case.get("doc_city"),
         "doc_date": grammar.fmt_date(case.get("doc_date")),
-        "reg_no": case.get("reg_no"),
-        "reg_date": grammar.fmt_date(case.get("reg_date")),
+        # the incoming number and filing date live in the График now; a value typed on the case wins
+        "reg_no": case.get("reg_no") or cand.get("in_no"),
+        "reg_date": grammar.fmt_date(case.get("reg_date") or cand.get("filed_date")),
     }
 
     def norm(d):
@@ -299,6 +345,7 @@ def assemble(cand: dict, emp: dict, pos: dict, case: dict, ctype: dict,
         "position": norm(position),
         "case": norm(case_ctx),
         "today": today.strftime("%d.%m.%Y"),
+        "housing_workers": [candidate["names"]] if candidate["names"] else [],
     }
 
 
@@ -333,7 +380,7 @@ def sample_context() -> dict:
         "birth_date": "1985-01-01", "birth_place": "Tashkent", "passport_no": "AB1234567",
         "passport_issue_date": "2020-03-15", "passport_expiry": "2030-03-14", "phone": "0888123456",
         "lnch": "", "address_bg": "", "marital_status": "", "education": "", "specialty": "",
-        "qualification": "",
+        "qualification": "", "residence_address": "гр. София, ж.к. Примерен, бл. 1", "ref_no": 1001,
     }
     emp = {"name": "ПРИМЕР ЕООД", "eik": "200000000", "address": "гр. София, ул. Примерна 10",
            "rep_name": "Георги Иванов Петров", "rep_role": "управител", "rep_gender": "M",
@@ -349,5 +396,6 @@ def sample_context() -> dict:
     ctype = {"name": "Единно разрешение – 3 години (чл. 24и)", "legal_ground": "24и",
              "residence_period": "3 години", "is_extension": 0}
     uzb = {"name": "Узбекистан", "name_official": "Република Узбекистан",
-           "name_ru_gen": "Республики Узбекистан", "name_ru_instr": "Республикой Узбекистан"}
+           "name_ru_gen": "Республики Узбекистан", "name_ru_instr": "Республикой Узбекистан",
+           "name_en": "Republic of Uzbekistan", "embassy": "Tashkent, Uzbekistan"}
     return assemble(cand, emp, pos, case, ctype, uzb, uzb)

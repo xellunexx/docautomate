@@ -2,10 +2,10 @@
 {% block title %}Бланки{% endblock %}
 {% block body %}
 <div class="head-row"><h1>Бланки</h1><a class="btn" href="{{ url_for('placeholders') }}" title="Всички полета {{ '{{…}}' }}, които може да ползвате в Word бланка, с пример">Списък на полетата {{ '{{…}}' }}</a></div>
-<p class="intro">Word файловете, от които се правят документите. Отметката в колона на вид случай значи: тази бланка се генерира за този вид. След промяна натиснете „Запиши реда“ на същия ред. Старите генерирани PDF не се променят.</p>
+<p class="intro">Word файловете, от които се правят документите. Отметката в колона на вид случай значи: тази бланка се генерира за този вид. „Държави“ избира бланката по страната на произход: например трудовият договор на руски е само за UZB,KGZ, а на английски е за всички без UZB,KGZ. След промяна натиснете „Запиши реда“ на същия ред. Старите генерирани PDF не се променят.</p>
 {% if rows %}
 <table class="list tpl-table">
-  <thead><tr><th>Бланка (името излиза във файла)</th>{% for t in types %}<th class="center" title="Отметнато = генерира се за „{{ t.name }}“">{{ t.name }}</th>{% endfor %}<th class="center" title="Неактивна бланка не се генерира никъде, но не се изтрива">Активна</th><th class="num" title="Подредба в списъците: по-малкото число е по-горе">Ред</th><th>Действие</th></tr></thead>
+  <thead><tr><th>Бланка (името излиза във файла)</th>{% for t in types %}<th class="center" title="Отметнато = генерира се за „{{ t.name }}“">{{ t.name }}</th>{% endfor %}<th title="За кои държави на произход (кодове от паспорта, напр. UZB,KGZ). „само“ = само за тях; „без“ = за всички освен тях. Празно = за всички.">Държави</th><th class="center" title="Неактивна бланка не се генерира никъде, но не се изтрива">Активна</th><th class="num" title="Подредба в списъците: по-малкото число е по-горе">Ред</th><th>Действие</th></tr></thead>
   <tbody>
   {% for r in rows %}
   <tr class="{{ 'inactive' if not r.is_active }}">
@@ -16,6 +16,8 @@
         <a href="{{ url_for('template_download', tid=r.id) }}" title="Сваля бланката с полетата, за да я промените в Word и качите обратно">свали за промяна (.docx)</a></div>
     </td>
     {% for t in types %}<td class="center"><input form="tf-{{ r.id }}" type="checkbox" name="case_types" value="{{ t.id }}" {{ 'checked' if (t.id, r.id) in links }} aria-label="{{ t.name }}"></td>{% endfor %}
+    <td class="countries-cell"><label class="small">само <input form="tf-{{ r.id }}" name="countries" value="{{ r.countries }}" size="9" placeholder="всички" aria-label="Само за тези държави"></label>
+      <label class="small">без <input form="tf-{{ r.id }}" name="exclude_countries" value="{{ r.exclude_countries }}" size="9" aria-label="За всички освен тези държави"></label></td>
     <td class="center"><input form="tf-{{ r.id }}" type="checkbox" name="is_active" value="1" {{ 'checked' if r.is_active }} aria-label="Активна"></td>
     <td class="num"><input form="tf-{{ r.id }}" name="sort_order" value="{{ r.sort_order }}" size="3" aria-label="Подредба"></td>
     <td><button form="tf-{{ r.id }}" class="btn small" title="Записва името, отметките, активността и подредбата на този ред">Запиши реда</button></td>
