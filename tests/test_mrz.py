@@ -106,3 +106,4 @@ def test_line_one_with_fillers_misread_as_k_and_noise_after():
     text = l1.replace("<", "K") + "\n" + l2 + "\nSOMENOISELINEFROMTHEPAGEFOOTER1234567890XYZ\n"
     r = mrz.parse_mrz(text)
     assert r.passport_no == "AB1234567" and r.birth_date == "1985-01-01", r.raw
+    assert r.name_lat == "" and any("Името" in w for w in r.warnings)  # garbled name is not suggested

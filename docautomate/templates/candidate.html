@@ -66,13 +66,14 @@
       el.classList.add('from-mrz');
       filled.push(labels[k]);
     }
-    let msg = (data.valid ? 'Разчетено, контролните цифри съвпадат. ' : 'Разчетено с предупреждения. ') +
+    const clean = data.valid && !data.warnings.length;
+    let msg = (clean ? 'Разчетено, контролните цифри съвпадат. ' : 'Разчетено с предупреждения. ') +
               'Попълнени: ' + filled.join(', ') + '.';
     if (changed.length) msg += ' Променени: ' + changed.join('; ') + '.';
     if (data.warnings.length) msg += ' ' + data.warnings.join(' ');
     if (!data.fields.citizenship_id && data.nationality) msg += ' Гражданство „' + data.nationality + '“ не е в списъка с държави.';
     msg += ' Проверете жълтите полета и натиснете „Запиши кандидата“ най-долу.';
-    show(msg, data.valid ? 'ok' : 'warn');
+    show(msg, clean ? 'ok' : 'warn');
   }
   let latest = 0;  // only the newest request may change the form
   async function send(body) {

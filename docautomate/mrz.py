@@ -111,9 +111,12 @@ def parse_mrz(text: str) -> MrzResult:
     res = MrzResult(raw=f"{l1}\n{l2}", found=True)
     res.issuing_country = l1[2:5].replace("<", "")
     names = l1[5:].rstrip("<")
-    surname, _, given = names.partition("<<")
-    res.surname = surname.replace("<", " ").strip()
-    res.given_names = given.replace("<", " ").strip()
+    if "<<" in names:
+        surname, _, given = names.partition("<<")
+        res.surname = surname.replace("<", " ").strip()
+        res.given_names = given.replace("<", " ").strip()
+    else:  # the << between surname and given names was misread: do not suggest a garbled name
+        res.warnings.append("Името не е разчетено ясно – въведете го ръчно.")
 
     pno, pno_cd = l2[0:9], l2[9]
     nat = l2[10:13]
