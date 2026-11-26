@@ -137,3 +137,15 @@ def test_api_record_for_other_position_is_not_merged(tmp_path):
     assert conn.execute('SELECT count(*) FROM "case"').fetchone()[0] == n_cases + 1
     assert conn.execute('SELECT count(*) FROM "case" WHERE airtable_id=\'recY\'').fetchone()[0] == 1
     assert conn.execute('SELECT count(*) FROM "case" WHERE airtable_id IS NULL').fetchone()[0] >= 1
+
+
+def test_linking_fills_empty_case_fields_but_keeps_staff_edits(tmp_path):
+    conn = _db(tmp_path)
+    importer.import_records(conn, importer.read_csv(_csv(tmp_path)))  # case has status 'Нов', no reg no
+    api = [{"_id": "recZ", "Име": "Тестов Тест", "Номер паспорт": "XX0000001", "Фирма": "ТЕСТ ЕООД",
+            "Позиция": "Общ работник", "Тип виза": "3 години", "Статус": "Подаден",
+            "Вх.номер": "777", "Дата на входиране": "2026-05-06"}]
+    importer.import_records(conn, api)
+    row = conn.execute('SELECT status, reg_no, reg_date FROM "case" WHERE airtable_id=\'recZ\'').fetchone()
+    assert row["reg_no"] == "777" and row["reg_date"] == "2026-05-06"  # empty fields filled
+    assert row["status"] == "Нов"  # existing value kept

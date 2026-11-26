@@ -277,7 +277,15 @@ def import_records(conn: sqlite3.Connection, records: list[dict], day_first: boo
                     " AND position_id IS ? AND (reg_no='' OR ?='' OR reg_no=?) AND airtable_id IS NULL",
                     (cid, emp_id, ctype, pos_id, reg_no, reg_no)).fetchall()
                 if len(unlinked) == 1:
-                    conn.execute('UPDATE "case" SET airtable_id=? WHERE id=?', (rec_id, unlinked[0]["id"]))
+                    case_id = unlinked[0]["id"]
+                    conn.execute('UPDATE "case" SET airtable_id=? WHERE id=?', (rec_id, case_id))
+                    # also fill case fields that are still empty; never overwrite what staff entered
+                    fill = {"status": _text(rec.get(F_STATUS)), "reg_no": reg_no,
+                            "reg_date": to_iso(_text(rec.get(F_REGDATE)), day_first)}
+                    for col, val in fill.items():
+                        if val:
+                            conn.execute(f'UPDATE "case" SET {col}=? WHERE id=? AND ({col} IS NULL OR {col}=\'\')',
+                                         (val, case_id))
                     dup = unlinked[0]
         else:
             dup = conn.execute('SELECT id FROM "case" WHERE candidate_id=? AND employer_id=? AND case_type_id=?',
