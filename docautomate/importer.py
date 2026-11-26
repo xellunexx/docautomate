@@ -268,10 +268,14 @@ def import_records(conn: sqlite3.Connection, records: list[dict], day_first: boo
         if rec_id:
             dup = conn.execute('SELECT id FROM "case" WHERE airtable_id=?', (rec_id,)).fetchone()
             if not dup:
-                # same case imported earlier from CSV (no Airtable id): link it instead of duplicating
+                # same case imported earlier from CSV (no Airtable id): link it instead of duplicating.
+                # Link only when it is clearly the same application: same position and no conflicting
+                # registration number. Otherwise the API record is inserted as its own case (nothing dropped).
+                reg_no = _text(rec.get(F_REGNO))
                 unlinked = conn.execute(
                     'SELECT id FROM "case" WHERE candidate_id=? AND employer_id=? AND case_type_id=?'
-                    " AND airtable_id IS NULL", (cid, emp_id, ctype)).fetchall()
+                    " AND position_id IS ? AND (reg_no='' OR ?='' OR reg_no=?) AND airtable_id IS NULL",
+                    (cid, emp_id, ctype, pos_id, reg_no, reg_no)).fetchall()
                 if len(unlinked) == 1:
                     conn.execute('UPDATE "case" SET airtable_id=? WHERE id=?', (rec_id, unlinked[0]["id"]))
                     dup = unlinked[0]

@@ -125,3 +125,15 @@ def test_api_import_links_case_from_earlier_csv(tmp_path):
     importer.import_records(conn, api)
     assert conn.execute('SELECT count(*) FROM "case"').fetchone()[0] == n_cases
     assert conn.execute('SELECT count(*) FROM "case" WHERE airtable_id=\'recX\'').fetchone()[0] == 1
+
+
+def test_api_record_for_other_position_is_not_merged(tmp_path):
+    conn = _db(tmp_path)
+    importer.import_records(conn, importer.read_csv(_csv(tmp_path)))
+    n_cases = conn.execute('SELECT count(*) FROM "case"').fetchone()[0]
+    api = [{"_id": "recY", "Име": "Тестов Тест", "Номер паспорт": "XX0000001", "Фирма": "ТЕСТ ЕООД",
+            "Позиция": "Шофьор", "Тип виза": "3 години"}]
+    importer.import_records(conn, api)
+    assert conn.execute('SELECT count(*) FROM "case"').fetchone()[0] == n_cases + 1
+    assert conn.execute('SELECT count(*) FROM "case" WHERE airtable_id=\'recY\'').fetchone()[0] == 1
+    assert conn.execute('SELECT count(*) FROM "case" WHERE airtable_id IS NULL').fetchone()[0] >= 1

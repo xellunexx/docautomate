@@ -81,7 +81,8 @@ def _normalise_lines(text: str) -> list[str]:
 def find_mrz_lines(text: str) -> tuple[str, str] | None:
     lines = _normalise_lines(text)
     for i, line in enumerate(lines):
-        if line.startswith("P") and i + 1 < len(lines):
+        # line 1 always has '<' (surname<<given names); a long filler-free heading is not line 1
+        if line.startswith("P") and "<" in line and i + 1 < len(lines):
             l1 = (line + "<" * 44)[:44]
             l2 = (lines[i + 1] + "<" * 44)[:44]
             return l1, l2

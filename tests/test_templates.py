@@ -138,3 +138,14 @@ def test_loop_variable_is_allowed_only_inside_for(tmp_path):
     assert ok.ok, (ok.errors, ok.unknown)
     bad = render.check_template(_make(tmp_path, "{{ loop.index }}"))
     assert not bad.ok and "loop" in bad.unknown
+
+
+def test_fill_itself_is_sandboxed(tmp_path):
+    # bypasses check_template, so this fails if the sandbox is ever removed from _jinja_env
+    from jinja2.sandbox import SecurityError
+    marker = tmp_path / "hacked.txt"
+    payload = ("{% set c = cycler %}{{ c.__init__.__globals__.os.system('echo x > "
+               + marker.as_posix() + "') }}")
+    with pytest.raises(SecurityError):
+        render.fill_docx(_make(tmp_path, payload), sample_context(), tmp_path / "out.docx")
+    assert not marker.exists()

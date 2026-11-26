@@ -93,3 +93,9 @@ def test_detected_mrz_beats_no_mrz(monkeypatch, tmp_path):
     monkeypatch.setattr(mrz, "ocr_passes", lambda p: ["no mrz here", broken])
     r = mrz.read_mrz_from_file(tmp_path / "x.png")
     assert r.found and r.passport_no == "AB1234567"
+
+
+def test_long_heading_is_not_taken_as_line_one():
+    text = "PASSPORT UNITED KINGDOM OF GREAT BRITAIN AND NORTHERN IRELAND\n" + make_mrz() + "\n"
+    r = mrz.parse_mrz(text)
+    assert r.passport_no == "AB1234567" and r.valid, r.warnings
