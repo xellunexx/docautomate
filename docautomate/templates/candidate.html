@@ -65,6 +65,37 @@
 </form>
 
 {% if row %}
+<section class="panel" id="schedule">
+  <div class="head-row"><h2>График</h2><a class="btn link" href="{{ url_for('schedule') }}" title="Отваря таблицата „Справки (График)“ с всички работници">Към графика</a></div>
+  <p class="help">Същите полета като в „Справки (График)“; промяната се вижда и на двете места. Датите не сменят статуса.</p>
+  <form method="post" action="{{ url_for('schedule_update', cid=row.id) }}" class="grid-form">
+    <div class="field">
+      <label for="s-status">Статус</label>
+      <select id="s-status" name="status" class="status-sel delay-{{ info.delay or 'none' }}">
+        {% for s in statuses %}<option {{ 'selected' if row.status == s }}>{{ s }}</option>{% endfor %}
+        {% if row.status not in statuses %}<option selected>{{ row.status }}</option>{% endif %}
+      </select>
+      <p class="help">{% if info.days_in_status is not none %}{{ info.days_in_status }} дни в този статус{% if info.delay %} – <b class="delay-text-{{ info.delay }}">{{ 'червено' if info.delay == 'red' else 'оранжево' }}</b>{% endif %}{% endif %}</p>
+    </div>
+    {% for k, label in sched_text %}<div class="field"><label for="s-{{ k }}">{{ label }}</label><input id="s-{{ k }}" name="{{ k }}" value="{{ row[k] }}"></div>{% endfor %}
+    {% for k, label in sched_dates %}<div class="field"><label for="s-{{ k }}">{{ label }}</label><input id="s-{{ k }}" name="{{ k }}" value="{{ row[k]|bgdate }}" placeholder="дд.мм.гггг" inputmode="numeric" autocomplete="off"></div>{% endfor %}
+    <div class="form-actions"><button class="btn primary" title="Записва статуса и датите от графика">Запиши графика</button></div>
+  </form>
+  <details class="addinfo-box">
+    <summary>Addition info</summary>
+    <dl class="kv">
+      <dt>Създаден</dt><dd>{{ info.created|bgdate if info.created }}</dd>
+      <dt>Последна смяна на статус</dt><dd>{{ info.status_changed|bgdate if info.status_changed }}</dd>
+      <dt>Дни в текущ статус</dt><dd>{{ info.days_in_status if info.days_in_status is not none }}</dd>
+      <dt>Индикация за забавяне</dt><dd>{{ {'red': 'червено', 'orange': 'оранжево'}.get(info.delay, 'няма') }}</dd>
+      <dt>Дни до изтичане на пребиваването</dt><dd>{{ info.residence_days if info.residence_days is not none else 'няма въведена дата' }}</dd>
+    </dl>
+    {% if history %}<h3>История на статуса</h3>
+    <table class="list"><thead><tr><th>Кога</th><th>От</th><th>Към</th><th>Кой</th></tr></thead><tbody>
+    {% for h in history %}<tr><td>{{ h.changed_at[:16] }}</td><td>{{ h.old_status }}</td><td>{{ h.new_status }}</td><td>{{ h.changed_by or '—' }}</td></tr>{% endfor %}
+    </tbody></table>{% endif %}
+  </details>
+</section>
 <div id="attachments">{{ attachments(attach_groups, files, 'worker', row.id) }}</div>
 <h2>Случаи на работника</h2>
 {% if cases %}

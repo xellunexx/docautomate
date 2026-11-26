@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% block title %}Справки (График){% endblock %}
+{% macro sort_link(key, label) -%}
+{% set next_dir = 'asc' if (sort != key or desc) else 'desc' %}
+<a class="sort {{ 'on' if sort == key }}" href="{{ url_for('schedule', **dict(request.args.to_dict(flat=False), sort=key, dir=next_dir)) }}"
+   title="Подрежда по „{{ label }}“: {{ 'от най-стара към най-нова' if next_dir == 'asc' else 'от най-нова към най-стара' }}">{{ label }}{% if sort == key %} {{ '↓' if desc else '↑' }}{% endif %}</a>
+{%- endmacro %}
+{% macro table(items) -%}
+<table class="list sched">
+  <thead><tr>
+    <th class="num">№</th><th>Статус</th><th>Работодател</th><th>Име на латиница</th><th>Име на кирилица</th><th>Дата на раждане</th>
+    <th>Паспорт №</th><th>Страна</th><th>Тип виза</th><th>Контакт</th><th>Входящ номер</th>
+    {% for k, label in date_fields %}<th>{{ sort_link(k, label) }}</th>{% endfor %}
+    <th class="addinfo-col"><button type="button" class="btn link addinfo-toggle" title="Показва или скрива автоматичните колони: създаден, смяна на статус, дни в статус, забавяне, дни до изтичане">Addition info</button></th>
+    <th class="addinfo">{{ sort_link('created_at', 'Създаден') }}</th><th class="addinfo">Смяна на статус</th><th class="addinfo num">Дни в статус</th>
+    <th class="addinfo">Забавяне</th><th class="addinfo num">Дни до изтичане</th>
+  </tr></thead>
+  <tbody>
+  {% for x in items %}{% set r, i = x.r, x.info %}
+  <tr data-id="{{ r.id }}">
+    <td class="num"><a href="{{ url_for('candidate', cid=r.id) }}" title="Отваря профила на работника">{{ r.ref_no }}</a></td>
+    <td><select class="cell status-sel delay-{{ i.delay or 'none' }}" data-field="status" aria-label="Статус на {{ r.name_cyr }}"
+         title="{{ 'Забавяне: ' ~ i.days_in_status ~ ' дни в този статус' if i.delay else 'Статусът се сменя само ръчно' }}">
+      {% for s in statuses %}<option {{ 'selected' if r.status == s }}>{{ s }}</option>{% endfor %}
+      {% if r.status not in statuses %}<option selected>{{ r.status }}</option>{% endif %}
+    </select></td>
+    <td>{{ r.employer or '' }}</td>
+    <td><a href="{{ url_for('candidate', cid=r.id) }}" title="Отваря профила на работника">{{ r.name_lat }}</a></td>
+    <td>{{ r.name_cyr }}</td><td>{{ r.birth_date|bgdate }}</td><td>{{ r.passport_no }}</td><td>{{ r.citizenship or '' }}</td>
+    <td>{{ r.visa_type }}</td><td>{{ r.contact }}</td>
+    <td><input class="cell" data-field="in_no" value="{{ r.in_no }}" aria-label="Входящ номер"></td>
+    {% for k, label in date_fields %}<td><input class="cell date" data-field="{{ k }}" value="{{ r[k]|bgdate }}" placeholder="дд.мм.гггг" aria-label="{{ label }}"></td>{% endfor %}
+    <td class="addinfo-col"></td>
+    <td class="addinfo">{{ i.created|bgdate if i.created }}</td><td class="addinfo">{{ i.status_changed|bgdate if i.status_changed }}</td>
+    <td class="addinfo num" data-out="days">{{ i.days_in_status if i.days_in_status is not none }}</td>
+    <td class="addinfo" data-out="delay">{% if i.delay %}<span class="tag delay-{{ i.delay }}">{{ 'червено' if i.delay == 'red' else 'оранжево' }}</span>{% endif %}</td>
+    <td class="addinfo num" data-out="res">{% if i.residence_days is not none %}<span class="res-{{ i.residence_band }}">{{ i.residence_days }}</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{%- endmacro %}
+{% block body %}
+<div class="head-row"><h1>Справки (График)</h1></div>
+<p class="intro">Етапите и датите на всеки работник. Датите и входящият номер се пишат направо в таблицата и се записват сами. Статусът се сменя само ръчно от падащото меню; оранжево и червено значи, че работникът стои твърде дълго в този статус.</p>
+<form class="filters" method="get" aria-label="Филтри">
+  <details class="multi-pick">
+    <summary title="Изберете един или няколко работодатели">{{ 'Работодатели: ' ~ f_emps|length if f_emps else 'Всички работодатели' }}</summary>
+    <div class="multi-list">{% for e in employers %}<label class="check"><input type="checkbox" name="employer" value="{{ e.id }}" {{ 'checked' if e.id in f_emps }}> {{ e.name }}</label>{% endfor %}</div>
+  </details>
+  <select name="visa" aria-label="Тип виза"><option value="">Всички типове виза</option>
+    {% for v in VISA_TYPES %}<option {{ 'selected' if f_visa == v }}>{{ v }}</option>{% endfor %}</select>
+  <select name="status" aria-label="Статус"><option value="">Всички статуси</option>
+    {% for s in statuses %}<option {{ 'selected' if f_status == s }}>{{ s }}</option>{% endfor %}</select>
+  <select name="delay" aria-label="Забавяне"><option value="">Всякакво забавяне</option>
+    <option value="red" {{ 'selected' if f_delay == 'red' }}>само червени</option>
+    <option value="orange" {{ 'selected' if f_delay == 'orange' }}>само оранжеви</option></select>
+  <select name="group" aria-label="Групиране"><option value="">Без групиране</option>
+    {% for k, l in [('status', 'по статус'), ('visa', 'по тип виза'), ('employer', 'по работодател'), ('contact', 'по контакт')] %}
+    <option value="{{ k }}" {{ 'selected' if group == k }}>Групирай {{ l }}</option>{% endfor %}</select>
+  {% if sort %}<input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ 'desc' if desc else 'asc' }}">{% endif %}
+  <button class="btn" title="Прилага филтрите и групирането">Покажи</button>
+  {% if request.args %}<a class="btn link" href="{{ url_for('schedule') }}" title="Маха всички филтри, групирането и подреждането">Изчисти</a>{% endif %}
+</form>
+<p class="muted small">Кликнете заглавие на дата, за да подредите. Показани: {{ rows|length }}.</p>
+<div id="save-msg" role="status" aria-live="polite" class="save-msg"></div>
+{% if rows %}
+<div class="table-wrap sched-wrap" id="sched">
+{% if groups %}
+  {% for name, items in groups %}<h2 class="group-head">{{ name }} <span class="muted">({{ items|length }})</span></h2>{{ table(items) }}{% endfor %}
+{% else %}{{ table(rows) }}{% endif %}
+</div>
+{% else %}<p class="empty">Няма работници, които отговарят на филтрите.</p>{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const wrap = document.getElementById('sched');
+  if (!wrap) return;
+  const msg = document.getElementById('save-msg');
+  if (localStorage.getItem('addinfo') === '1') wrap.classList.add('show-addinfo');
+  wrap.querySelectorAll('.addinfo-toggle').forEach(b => b.addEventListener('click', () => {
+    wrap.classList.toggle('show-addinfo');
+    localStorage.setItem('addinfo', wrap.classList.contains('show-addinfo') ? '1' : '0');
+  }));
+  function say(text, cls) { msg.textContent = text; msg.className = 'save-msg ' + (cls || ''); }
+  wrap.addEventListener('change', async (e) => {
+    const el = e.target.closest('.cell');
+    if (!el) return;
+    const tr = el.closest('tr');
+    const body = {}; body[el.dataset.field] = el.value;
+    el.classList.remove('bad'); el.classList.add('saving');
+    try {
+      const r = await fetch('{{ url_for("schedule") }}/' + tr.dataset.id, {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      const d = await r.json();
+      el.classList.remove('saving');
+      if (!d.ok) { el.classList.add('bad'); return say(Object.values(d.errors).join(' '), 'error'); }
+      if (d.values[el.dataset.field] !== undefined) el.value = d.values[el.dataset.field] || '';
+      const sel = tr.querySelector('.status-sel');
+      sel.className = 'cell status-sel delay-' + (d.delay || 'none');
+      tr.querySelector('[data-out=days]').textContent = d.days_in_status ?? '';
+      tr.querySelector('[data-out=delay]').innerHTML = d.delay ? '<span class="tag delay-' + d.delay + '">' + (d.delay === 'red' ? 'червено' : 'оранжево') + '</span>' : '';
+      tr.querySelector('[data-out=res]').innerHTML = d.residence_days === null ? '' : '<span class="res-' + d.residence_band + '">' + d.residence_days + '</span>';
+      el.classList.add('saved'); setTimeout(() => el.classList.remove('saved'), 1200);
+      say('Записано: ' + (el.getAttribute('aria-label') || '').replace(/^Статус на .*/, 'статус') + '.', 'ok');
+    } catch (err) { el.classList.remove('saving'); el.classList.add('bad'); say('Няма връзка с програмата. Не е записано.', 'error'); }
+  });
+})();
+</script>
+{% endblock %}

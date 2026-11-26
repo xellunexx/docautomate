@@ -16,6 +16,8 @@
        title="База Работодатели: фирмите, техните адреси, длъжности и документи.">База Работодатели</a>
     <a href="{{ url_for('candidates') }}" class="{{ 'on' if ep.startswith('candidate') }}"
        title="База Работници: лични и паспортни данни, работодател, тип виза и прикачени документи.">База Работници</a>
+    <a href="{{ url_for('schedule') }}" class="{{ 'on' if ep.startswith('schedule') }}"
+       title="Справки (График): статуси и дати на всички работници, оцветяване при забавяне.">Справки (График)</a>
     <a href="{{ url_for('cases') }}" class="{{ 'on' if ep.startswith('case') and ep != 'case_types' }}"
        title="Случаи: оттук се генерират документите за работник при работодател.">Случаи</a>
     <a href="{{ url_for('templates') }}" class="{{ 'on' if ep.startswith('template') or ep == 'placeholders' }}"

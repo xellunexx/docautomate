@@ -18,10 +18,14 @@ from werkzeug.utils import secure_filename
 
 from . import db as dbm
 from . import forms, mrz, render
+from . import schedule as sched
+from .grammar import parse_date
 from .context import LIST_FIELDS, PLACEHOLDERS, build_context, flatten, missing_fields
 from .db import get_db
 
 ROOT = Path(__file__).resolve().parent.parent
+EDITABLE_TEXT = {k for k, _ in sched.TEXT_FIELDS}
+EDITABLE_DATES = {k for k, _ in sched.DATE_FIELDS}
 MASTERS_DIR = ROOT / "masters"
 
 
@@ -272,7 +276,119 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         return render_template("candidate.html", row=row, values=values, errors=errors,
                                fields=forms.CANDIDATE, countries=_countries(), cases=cases,
                                ocr=mrz.ocr_available(), attach_groups=dbm.WORKER_ATTACHMENTS,
-                               files=_attachments("worker", cid) if cid else {}, **_worker_choices())
+                               files=_attachments("worker", cid) if cid else {}, **_worker_choices(),
+                               info=sched.addition_info(row) if row else None,
+                               statuses=sched.ALL_STATUSES, sched_text=sched.TEXT_FIELDS,
+                               sched_dates=sched.DATE_FIELDS,
+                               history=d.execute("SELECT * FROM status_history WHERE candidate_id=?"
+                                                 " ORDER BY id DESC", (cid or 0,)).fetchall())
+
+    # ------------------------------------------------------------ Справки (График)
+    sort_fields = {k for k, _ in sched.DATE_FIELDS} | {"created_at"}
+
+    @app.get("/schedule")
+    def schedule():
+        """The working table: worker and employer columns, editable dates and status, delay colours."""
+        d = get_db()
+        f_emps = [int(x) for x in request.args.getlist("employer") if x.isdigit()]
+        f_visa = request.args.get("visa", "").strip()
+        f_status = request.args.get("status", "").strip()
+        f_delay = request.args.get("delay", "").strip()
+        group = request.args.get("group", "")
+        sort = request.args.get("sort", "")
+        desc = request.args.get("dir") == "desc"
+        sql = ("SELECT ca.*, co.name AS citizenship, e.name AS employer FROM candidate ca"
+               " LEFT JOIN country co ON co.id=ca.citizenship_id LEFT JOIN employer e ON e.id=ca.employer_id")
+        where, args = [], []
+        if f_emps:
+            where.append(f"ca.employer_id IN ({','.join('?' * len(f_emps))})")
+            args += f_emps
+        if f_visa:
+            where.append("ca.visa_type=?")
+            args.append(f_visa)
+        if f_status:
+            where.append("ca.status=?")
+            args.append(f_status)
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        rows = [{"r": r, "info": sched.addition_info(r)} for r in d.execute(sql, args).fetchall()]
+        if f_delay in ("red", "orange"):
+            rows = [x for x in rows if x["info"]["delay"] == f_delay]
+        if sort in sort_fields:
+            # empty dates always go last, whichever direction
+            filled = sorted((x for x in rows if x["r"][sort]), key=lambda x: x["r"][sort], reverse=desc)
+            rows = filled + [x for x in rows if not x["r"][sort]]
+        else:
+            rows.sort(key=lambda x: x["r"]["ref_no"] or 0)
+        group_keys = {"status": "status", "visa": "visa_type", "employer": "employer", "contact": "contact"}
+        groups = []
+        if group in group_keys:
+            col = group_keys[group]
+            order = {s: i for i, s in enumerate(sched.ALL_STATUSES)} if group == "status" else None
+            def gkey(x):
+                v = x["r"][col] or ""
+                return (order.get(v, 99), v) if order else (v == "", v)
+            for x in sorted(rows, key=gkey):
+                label = x["r"][col] or "(празно)"
+                if not groups or groups[-1][0] != label:
+                    groups.append((label, []))
+                groups[-1][1].append(x)
+        return render_template(
+            "schedule.html", rows=rows, groups=groups, group=group, sort=sort, desc=desc,
+            f_emps=f_emps, f_visa=f_visa, f_status=f_status, f_delay=f_delay,
+            employers=d.execute("SELECT id, name FROM employer ORDER BY name").fetchall(),
+            statuses=sched.ALL_STATUSES, main_statuses=sched.STATUSES, date_fields=sched.DATE_FIELDS)
+
+    def set_status(cid, new_status, by=""):
+        """Manual status change: the only way a status moves. Writes the history row."""
+        d = get_db()
+        row = _one("SELECT status FROM candidate WHERE id=?", cid)
+        if new_status not in sched.ALL_STATUSES:
+            raise ValueError("невалиден статус")
+        if new_status == row["status"]:
+            return False
+        d.execute("UPDATE candidate SET status=?, status_changed_at=datetime('now','localtime'),"
+                  " updated_at=datetime('now','localtime') WHERE id=?", (new_status, cid))
+        d.execute("INSERT INTO status_history (candidate_id, old_status, new_status, changed_by) VALUES (?,?,?,?)",
+                  (cid, row["status"], new_status, by))
+        d.commit()
+        return True
+
+    @app.post("/schedule/<int:cid>")
+    def schedule_update(cid):
+        """Save one or more График fields (inline table edit sends JSON; the profile sends a form).
+        Dates and the incoming number never change the status (задание 03)."""
+        _one("SELECT id FROM candidate WHERE id=?", cid)
+        data = request.get_json(silent=True) or request.form.to_dict()
+        values, errors = {}, {}
+        for k, v in data.items():
+            if k in EDITABLE_TEXT:
+                values[k] = str(v).strip()
+            elif k in EDITABLE_DATES:
+                try:
+                    values[k] = parse_date(str(v).strip())
+                except ValueError as exc:
+                    errors[k] = f"{sched.EDITABLE[k]}: {exc}"
+        if "status" in data and not errors:
+            try:
+                set_status(cid, str(data["status"]).strip())
+            except ValueError as exc:
+                errors["status"] = f"Статус: {exc}"
+        if values and not errors:
+            _update("candidate", cid, values)
+        row = get_db().execute("SELECT * FROM candidate WHERE id=?", (cid,)).fetchone()
+        info = sched.addition_info(row)
+        if request.is_json:
+            return jsonify(ok=not errors, errors=errors, status=row["status"], delay=info["delay"],
+                           days_in_status=info["days_in_status"], residence_days=info["residence_days"],
+                           residence_band=info["residence_band"],
+                           values={k: (_iso_to_bg(row[k]) if k in EDITABLE_DATES else row[k]) for k in values}), \
+                (200 if not errors else 422)
+        for e in errors.values():
+            flash(e, "error")
+        if not errors:
+            flash("Данните от графика са записани.", "ok")
+        return redirect(url_for("candidate", cid=cid) + "#schedule")
 
     def _worker_choices():
         d = get_db()

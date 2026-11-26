@@ -243,6 +243,17 @@ CREATE TABLE IF NOT EXISTS ref_counter (
     kind TEXT PRIMARY KEY,
     last_value INTEGER NOT NULL
 );
+
+-- Every manual status change: before, after, when, by whom (задание раздел 03).
+CREATE TABLE IF NOT EXISTS status_history (
+    id INTEGER PRIMARY KEY,
+    candidate_id INTEGER NOT NULL,         -- kept after the worker is deleted
+    old_status TEXT NOT NULL DEFAULT '',
+    new_status TEXT NOT NULL,
+    changed_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    changed_by TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS ix_status_history_candidate ON status_history(candidate_id);
 """
 
 # Columns added after v1. ALTER TABLE keeps existing databases and their data.
@@ -255,6 +266,19 @@ _ADDED_COLUMNS = {
         ("residence_address", "TEXT NOT NULL DEFAULT ''"),
         ("visa_type", "TEXT NOT NULL DEFAULT ''"),
         ("contact", "TEXT NOT NULL DEFAULT ''"),
+        # Справки (График), задание раздел 03
+        ("in_no", "TEXT NOT NULL DEFAULT ''"),
+        ("filed_date", "TEXT"),
+        ("permit_date", "TEXT"),
+        ("visa_interview_date", "TEXT"),
+        ("visa_date", "TEXT"),
+        ("ticket_date", "TEXT"),
+        ("arrival_date", "TEXT"),
+        ("migration_reg_date", "TEXT"),
+        ("lk_submit_date", "TEXT"),
+        ("lk_pickup_date", "TEXT"),
+        ("residence_until", "TEXT"),
+        ("status_changed_at", "TEXT"),
     ],
     "employer": [
         ("ref_no", "INTEGER"),
@@ -316,6 +340,25 @@ def _migrate(conn: sqlite3.Connection) -> None:
         for (rid,) in conn.execute(f"SELECT id FROM {table} WHERE ref_no IS NULL ORDER BY id").fetchall():
             conn.execute(f"UPDATE {table} SET ref_no=? WHERE id=?", (next_ref(conn, kind), rid))
         conn.executescript(_REF_TRIGGERS.format(table=table, kind=kind, start=REF_START[kind] - 1))
+    # Every new worker starts as „Нов“ and its status clock starts at creation, whatever the insert path.
+    conn.executescript("""
+CREATE TRIGGER IF NOT EXISTS trg_candidate_status AFTER INSERT ON candidate
+WHEN NEW.status='' OR NEW.status_changed_at IS NULL BEGIN
+    UPDATE candidate SET status=CASE WHEN status='' THEN 'Нов' ELSE status END,
+                         status_changed_at=coalesce(status_changed_at, created_at) WHERE id=NEW.id;
+END;
+""")
+
+    if ("candidate", "status_changed_at") in added:
+        # Statuses from before the График: keep known ones, start the rest as „Нов“ counted from creation.
+        from .schedule import ALL_STATUSES
+        marks = ",".join("?" * len(ALL_STATUSES))
+        # an unknown old status text is kept in the notes, not lost
+        conn.execute("UPDATE candidate SET notes=trim(notes || char(10) || 'Стар статус: ' || status)"
+                     f" WHERE status<>'' AND status NOT IN ({marks})", ALL_STATUSES)
+        conn.execute(f"UPDATE candidate SET status='Нов' WHERE status NOT IN ({marks})", ALL_STATUSES)
+        conn.execute("UPDATE candidate SET status_changed_at=CASE WHEN status='Нов' THEN created_at"
+                     " ELSE updated_at END")
 
     if ("candidate", "employer_id") in added:
         # Before, employer, position and case type lived only on the case. Copy them from each

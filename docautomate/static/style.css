@@ -337,3 +337,32 @@ tr.row-link:hover td { background: var(--accent-soft); }
 form.inline { display: inline; }
 .btn.link.danger { color: var(--err); }
 .filters select, .filters input { width: auto; max-width: 260px; }
+
+/* ---------------------------------------------------------------- stage 2: График */
+.sched td, .sched th { white-space: nowrap; }
+.sched input.cell { width: 7.2em; padding: 3px 6px; font-size: .85rem; }
+.sched input.cell[data-field=in_no] { width: 8.5em; }
+.sched select.cell { width: auto; padding: 3px 6px; font-size: .85rem; }
+.sched-wrap .addinfo { display: none; }
+.sched-wrap.show-addinfo .addinfo { display: table-cell; }
+.sched-wrap.show-addinfo .addinfo-col { background: var(--sunken); }
+.status-sel.delay-orange { background: #fff1db; border-color: #e3a43c; color: #7a4a00; font-weight: 600; }
+.status-sel.delay-red { background: var(--err-bg); border-color: #e0807a; color: var(--err); font-weight: 600; }
+.tag.delay-orange { background: #fff1db; color: #7a4a00; }
+.tag.delay-red { background: var(--err-bg); color: var(--err); }
+.delay-text-red { color: var(--err); } .delay-text-orange { color: #7a4a00; }
+.res-red { color: var(--err); font-weight: 600; } .res-orange { color: #7a4a00; font-weight: 600; }
+.res-yellow { color: #6b6000; font-weight: 600; } .res-expired { color: var(--err); text-decoration: line-through; }
+input.cell.saving { opacity: .6; } input.cell.saved, select.cell.saved { outline: 2px solid var(--ok-line); }
+input.cell.bad, select.cell.bad { outline: 2px solid var(--err-line); background: var(--err-bg); }
+.save-msg { min-height: 1.3em; font-size: .88rem; margin: 0 0 6px; }
+.save-msg.ok { color: var(--ok); } .save-msg.error { color: var(--err); }
+a.sort { color: inherit; text-decoration: none; } a.sort.on { color: var(--accent); }
+select.multi { min-height: 2.2em; }
+.addinfo-box { margin-top: 12px; } .addinfo-box summary { cursor: pointer; font-weight: 600; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 10px 0; }
+dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; }
+.multi-pick { position: relative; }
+.multi-pick summary { cursor: pointer; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 6px 10px; background: var(--surface); list-style: none; font-size: .92rem; }
+.multi-pick .multi-list { position: absolute; z-index: 5; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm);
+  box-shadow: var(--shadow); padding: 8px 10px; max-height: 300px; overflow: auto; min-width: 240px; display: flex; flex-direction: column; gap: 4px; }
