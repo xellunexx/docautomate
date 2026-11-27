@@ -17,7 +17,7 @@ from flask import (Flask, abort, flash, jsonify, redirect, render_template, requ
 from werkzeug.utils import secure_filename
 
 from . import db as dbm
-from . import ai_text, auth, dashboard, forms, mailer, mrz, pipeline, render
+from . import ai_text, auth, dashboard, forms, mailer, mrz, pipeline, portal, render
 from . import schedule as sched
 from .grammar import parse_date
 from .context import LIST_FIELDS, PLACEHOLDERS, build_context, flatten, missing_fields
@@ -60,6 +60,7 @@ def create_app(data_dir: Path | None = None, testing: bool = False) -> Flask:
     install_masters(conn, data_dir / "templates")
     conn.close()
     app.teardown_appcontext(dbm.close_db)
+    portal.register(app)  # before auth: Synchro requests are passed on without Docautomate's login
     auth.register(app)
     dashboard.register(app)
     _register(app)

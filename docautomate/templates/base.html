@@ -48,6 +48,7 @@
   <div class="who">
     <span title="Влезли сте като този потребител">{{ current_user.full_name or current_user.username }}{% if current_user.is_super %} · супер юзър{% endif %}</span>
     <a href="{{ url_for('account') }}" title="Смяна на собствената парола">парола</a>
+    <a href="/portal" title="Избор между Docautomate и Synchro (офис: заявки, договори, счетоводство)">смени</a>
     <form method="post" action="{{ url_for('logout') }}" class="inline"><button class="btn link" title="Излиза от програмата на този компютър">изход</button></form>
   </div>
   {% endif %}

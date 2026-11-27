@@ -11,3 +11,6 @@ data/
 *.doc
 !masters/*.docx
 demo-data/
+# Synchro (the adapted infraerp) lives here on the office PC only; it is never committed
+synchro/
+node_modules/
