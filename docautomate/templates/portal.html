@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Избор{% endblock %}
+{% block body %}
+<section class="portal">
+  <h1>Къде отивате?</h1>
+  <div class="portal-cards">
+    <a class="portal-card{{ ' on' if current == 'docautomate' }}" href="/portal/go/docautomate">
+      <span class="portal-mark" aria-hidden="true">D</span>
+      <b>Docautomate</b>
+      <span>Работници, работодатели, документи за разрешения и визи, справки и статуси.</span>
+    </a>
+    <a class="portal-card{{ ' on' if current == 'synchro' }}{{ ' off' if not synchro_ok }}" href="/portal/go/synchro">
+      <span class="portal-mark s" aria-hidden="true">S</span>
+      <b>Synchro</b>
+      <span>Офисът: заявки от работодатели, договори, счетоводство, съобщения, задачи, линеен календар.</span>
+      {% if not synchro_ok %}<em>Synchro не работи в момента на компютъра в офиса.</em>{% endif %}
+    </a>
+  </div>
+  <p class="help">Изборът се запомня на това устройство. Смяна: отворете <code>/portal</code> или натиснете „смени“ горе.</p>
+</section>
+{% endblock %}

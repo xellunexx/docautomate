@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Synchro не работи{% endblock %}
+{% block body %}
+<section class="panel narrow">
+  <h1>Synchro не отговаря</h1>
+  <p>Програмата Synchro не е пусната на компютъра в офиса (очаква се на {{ url }}). Пуснете я със <code>start-synchro.bat</code> или изберете Docautomate.</p>
+  <p><a class="btn primary" href="/portal/go/docautomate">Към Docautomate</a> <a class="btn" href="/portal">Избор</a></p>
+</section>
+{% endblock %}
