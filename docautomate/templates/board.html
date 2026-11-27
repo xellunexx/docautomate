@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Изглед по статуси{% endblock %}
+{% block body %}
+<h1>Изглед по статуси</h1>
+<p class="intro">Колона за всеки статус. Цветната лента значи забавяне. Статусът се сменя ръчно от профила или графика.</p>
+<form class="filters" method="get" aria-label="Филтри">
+  {% include '_dash_filters.html' %}
+  <button class="btn" title="Прилага филтрите">Покажи</button>
+  {% if request.args %}<a class="btn link" href="{{ url_for('board') }}" title="Маха филтрите">Изчисти</a>{% endif %}
+</form>
+<div class="board">
+{% for status, cards in cols.items() %}
+  <section class="board-col">
+    <h2>{{ status }} <span class="muted">{{ cards|length }}</span></h2>
+    {% for c in cards %}
+    <a class="board-card delay-{{ c.delay or 'none' }}" href="{{ url_for('candidate', cid=c.r.id) }}" title="Отваря профила на работника">
+      <b>№ {{ c.r.ref_no }} {{ c.r.name_cyr or c.r.name_lat }}</b>
+      <span>{{ c.r.employer or 'без работодател' }}</span>
+      <small>{{ c.r.assigned }}{% if c.days_in_status is not none %} · {{ c.days_in_status }} дни{% endif %}</small>
+    </a>
+    {% else %}<p class="muted small">—</p>{% endfor %}
+  </section>
+{% endfor %}
+</div>
+{% endblock %}

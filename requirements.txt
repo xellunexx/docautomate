@@ -1,0 +1,9 @@
+Flask>=3.0,<4
+docxtpl>=0.18,<1
+requests>=2.31,<3
+Pillow>=10
+waitress>=3,<4
+# PDF through Microsoft Word when LibreOffice is not installed (Windows only)
+pywin32>=306; sys_platform == "win32"
+# AI text for обосновка and ДХ (used only when ANTHROPIC_API_KEY is set in .env)
+anthropic>=2.14,<3

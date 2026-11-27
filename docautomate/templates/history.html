@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}История на промените{% endblock %}
+{% block body %}
+<h1>История на промените</h1>
+<p class="intro">Кой, кога и какво е добавил, променил или изтрил в базите, включително статус, Assigned и прикачени файлове. При промяна се виждат стойностите преди и след. Записите остават и след изтриване. Показани са последните 500.</p>
+<form class="filters" method="get" aria-label="Филтри">
+  <select name="entity" aria-label="Вид запис"><option value="">Всички записи</option>
+    {% for k, l in entities.items() %}<option value="{{ k }}" {{ 'selected' if f_entity == k }}>{{ l }}</option>{% endfor %}</select>
+  <select name="user" aria-label="Потребител"><option value="">Всички потребители</option>
+    {% for n in names %}<option {{ 'selected' if f_user == n }}>{{ n }}</option>{% endfor %}</select>
+  <input name="q" value="{{ f_q }}" placeholder="Име, номер или стойност" aria-label="Търси">
+  <button class="btn" title="Прилага филтрите">Покажи</button>
+  {% if request.args %}<a class="btn link" href="{{ url_for('history') }}" title="Маха филтрите">Изчисти</a>{% endif %}
+</form>
+{% if rows %}
+<div class="table-wrap"><table class="list">
+  <thead><tr><th>Кога</th><th>Кой</th><th>Действие</th><th>Запис</th><th>Поле</th><th>Преди</th><th>След</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td class="nowrap">{{ r.at[:16] }}</td><td>{{ r.username or '—' }}</td>
+    <td>{{ {'create': 'добавяне', 'update': 'промяна', 'delete': 'изтриване'}.get(r.action, r.action) }}</td>
+    <td>{{ entities.get(r.entity, r.entity) }}: {% if r.entity == 'candidate' and r.action != 'delete' %}<a href="{{ url_for('candidate', cid=r.entity_id) }}" title="Отваря работника">{{ r.label }}</a>{% elif r.entity == 'employer' and r.action != 'delete' %}<a href="{{ url_for('employer', eid=r.entity_id) }}" title="Отваря работодателя">{{ r.label }}</a>{% else %}{{ r.label }}{% endif %}</td>
+    <td>{{ r.field }}</td><td class="hist-val">{{ r.old_value|truncate(160) }}</td><td class="hist-val">{{ r.new_value|truncate(160) }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}<p class="empty">Няма промени, които отговарят на филтрите.</p>{% endif %}
+{% endblock %}

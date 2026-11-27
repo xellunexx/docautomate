@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Начало{% endblock %}
+{% block body %}
+<div class="head-row">
+  <h1>Начало</h1>
+  <div class="actions">
+    <a class="btn primary" href="{{ url_for('case_edit') }}" title="Отваря празен формуляр за нов случай: избирате кандидат, работодател, длъжност и условия по договора.">+ Нов случай</a>
+    <a class="btn" href="{{ url_for('candidate') }}" title="Отваря празен формуляр за нов кандидат. Може да разчетете паспорта от скан.">+ Нов кандидат</a>
+  </div>
+</div>
+<p class="intro">Въвеждате данните веднъж. Програмата ги попълва във всички бланки и прави PDF.</p>
+{% if not pdf %}
+<div class="flash error">PDF не може да се прави: на компютъра няма LibreOffice или Microsoft Word. Инсталирайте безплатния <b>LibreOffice</b> (libreoffice.org) и пуснете програмата отново. Дотогава се правят само Word файлове.</div>
+{% endif %}
+
+<h2>Как се работи – 4 стъпки</h2>
+<ol class="steps">
+  <li><a href="{{ url_for('employers') }}" title="Към списъка с работодатели">Работодател</a><span>Фирма, ЕИК, адрес, представляващ. Веднъж за фирма.</span></li>
+  <li><a href="{{ url_for('employers') }}" title="Длъжностите се добавят от страницата на работодателя">Длъжност</a><span>НКПД, място на работа, обосновка, длъжностна характеристика. Веднъж за длъжност.</span></li>
+  <li><a href="{{ url_for('candidates') }}" title="Към списъка с кандидати">Кандидат</a><span>Имена и паспорт. Паспортът може да се разчете от скан.</span></li>
+  <li><a href="{{ url_for('cases') }}" title="Към списъка със случаи">Случай → Генерирай PDF</a><span>Кой, при кого, вид случай, заплата и срокове. После един бутон за всички документи.</span></li>
+</ol>
+
+<h2>Общо</h2>
+<section class="stats">
+  <a href="{{ url_for('cases') }}" title="Отваря списъка със случаи"><b>{{ counts['case'] }}</b><span>случая</span><small>Отвори списъка</small></a>
+  <a href="{{ url_for('candidates') }}" title="Отваря списъка с кандидати"><b>{{ counts['candidate'] }}</b><span>кандидати</span><small>Отвори списъка</small></a>
+  <a href="{{ url_for('employers') }}" title="Отваря списъка с работодатели"><b>{{ counts['employer'] }}</b><span>работодатели</span><small>Отвори списъка</small></a>
+  <div title="Колко пъти са генерирани комплекти документи. Всеки комплект се пази в случая."><b>{{ counts['generation'] }}</b><span>генерирани комплекта PDF</span><small>Пазят се в случаите</small></div>
+</section>
+
+<h2>Последно променени случаи</h2>
+{% if recent %}
+<table class="list">
+  <thead><tr><th>Кандидат (отваря случая)</th><th>Работодател</th><th>Вид случай</th><th>Променен</th></tr></thead>
+  <tbody>
+  {% for r in recent %}
+    <tr><td><a href="{{ url_for('case_view', case_id=r.id) }}" title="Отваря случая: документи за генериране и история">{{ r.name_cyr }}</a></td><td>{{ r.employer }}</td><td>{{ r.ctype }}</td><td class="muted">{{ r.updated_at[:10]|bgdate }} {{ r.updated_at[11:16] }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">Още няма случаи. Започнете с <a href="{{ url_for('employer') }}">нов работодател</a>, после <a href="{{ url_for('candidate') }}">нов кандидат</a> и <a href="{{ url_for('case_edit') }}">нов случай</a>. Или <a href="{{ url_for('import_page') }}">прехвърлете кандидатите от Airtable</a>.</p>
+{% endif %}
+<p class="muted small">Програма за PDF: {{ pdf or 'няма (само Word файлове)' }} · Разчитане на паспорт от скан: {{ 'включено' if ocr else 'не е инсталирано (данните се въвеждат ръчно)' }}</p>
+{% endblock %}

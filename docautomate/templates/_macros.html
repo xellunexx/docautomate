@@ -1,0 +1,61 @@
+{% macro field(f, values, errors, countries=None) -%}
+{% set v = values.get(f.name) if values.get(f.name) is not none else '' %}
+<div class="field {{ 'wide' if f.wide or f.kind == 'textarea' }} {{ 'has-error' if errors.get(f.name) }}">
+  <label for="f-{{ f.name }}">{{ f.label }}{% if f.required %} <span class="req" aria-label="задължително">*</span>{% endif %}</label>
+  {% if f.kind == 'textarea' %}
+    <textarea id="f-{{ f.name }}" name="{{ f.name }}" rows="{{ 8 if f.name.startswith(('dh_', 'obosnovka')) else 3 }}">{{ v }}</textarea>
+  {% elif f.kind == 'gender' %}
+    <select id="f-{{ f.name }}" name="{{ f.name }}">
+      {% for val, lbl in [('', '—'), ('M', 'мъж'), ('F', 'жена')] %}<option value="{{ val }}" {{ 'selected' if v == val }}>{{ lbl }}</option>{% endfor %}
+    </select>
+  {% elif f.kind == 'country' %}
+    <select id="f-{{ f.name }}" name="{{ f.name }}">
+      <option value="">—</option>
+      {% for c in countries %}<option value="{{ c.id }}" {{ 'selected' if v|string == c.id|string }}>{{ c.name }}</option>{% endfor %}
+    </select>
+  {% elif f.kind == 'select' %}
+    <select id="f-{{ f.name }}" name="{{ f.name }}">
+      {% for val, lbl in f.options %}<option value="{{ val }}" {{ 'selected' if v|string == val }}>{{ lbl }}</option>{% endfor %}
+    </select>
+  {% elif f.kind == 'bool' %}
+    <label class="check"><input type="checkbox" id="f-{{ f.name }}" name="{{ f.name }}" value="1" {{ 'checked' if v in (1, '1', 'on', True) }}> Да</label>
+  {% elif f.kind == 'date' %}
+    <input id="f-{{ f.name }}" name="{{ f.name }}" value="{{ v|bgdate }}" placeholder="дд.мм.гггг" inputmode="numeric" autocomplete="off">
+  {% elif f.kind == 'int' %}
+    <input id="f-{{ f.name }}" name="{{ f.name }}" value="{{ v }}" inputmode="numeric">
+  {% else %}
+    <input id="f-{{ f.name }}" name="{{ f.name }}" value="{{ v }}" type="{{ 'email' if f.kind == 'email' else 'text' }}" {{ 'required' if f.required }}>
+  {% endif %}
+  {% if errors.get(f.name) %}<p class="err">{{ errors[f.name] }}</p>{% elif f.help %}<p class="help">{{ f.help }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro attachments(groups, files, owner_type, owner_id) -%}
+{# One upload field per category; files listed under it with download and delete. #}
+<section class="panel attach">
+  <h2>Прикачени документи</h2>
+  <p class="help">Всяко поле е по желание. Може да изберете няколко файла наведнъж. Файловете се пазят на този компютър.</p>
+  <div class="attach-grid">
+  {% for key, label in groups %}
+    <div class="attach-box">
+      <h3>{{ label }}</h3>
+      {% set mine = files.get(key, []) %}
+      {% if mine %}<ul class="files">
+        {% for a in mine %}<li><a href="{{ url_for('attachment_get', aid=a.id) }}" target="_blank" title="Отваря файла в нов раздел">{{ a.original_name }}</a>
+          <span class="muted small">{{ a.uploaded_at[:10]|bgdate }}</span>
+          <form method="post" action="{{ url_for('attachment_delete', aid=a.id) }}" class="inline" onsubmit="return confirm('Да изтрия ли този файл? Не може да се върне.')">
+            <button class="btn link danger" title="Изтрива този файл">изтрий</button></form></li>{% endfor %}
+      </ul>{% else %}<p class="muted small">Няма файлове.</p>{% endif %}
+      <form method="post" enctype="multipart/form-data" action="{{ url_for('attachment_upload', owner_type=owner_type, owner_id=owner_id, category=key) }}" class="attach-up">
+        <input type="file" name="files" multiple aria-label="Изберете файлове за „{{ label }}“">
+        <button class="btn" title="Качва избраните файлове в „{{ label }}“">Качи</button>
+      </form>
+    </div>
+  {% endfor %}
+  </div>
+</section>
+{%- endmacro %}
+
+{% macro error_box(errors) -%}
+{% if errors %}<div class="flash error" role="alert">Нищо не е записано. Поправете {{ errors|length }} {{ 'поле, отбелязано' if errors|length == 1 else 'полета, отбелязани' }} в червено, и запишете отново.</div>{% endif %}
+{%- endmacro %}

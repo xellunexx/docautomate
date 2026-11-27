@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import field, error_box, attachments %}
+{% block title %}{{ row.name_cyr if row else 'Нов работник' }}{% endblock %}
+{% block body %}
+<p class="crumbs"><a href="{{ url_for('candidates') }}">База Работници</a> /</p>
+<div class="head-row">
+  <h1>{{ row.name_cyr if row else 'Нов работник' }}{% if row %} <span class="ref" title="Уникален номер на записа. Постоянен, не се променя.">№ {{ row.ref_no }}</span>{% endif %}</h1>
+  {% if row %}<a class="btn primary" href="{{ url_for('case_edit', candidate_id=row.id) }}" title="Отваря нов случай с този работник: работодател, длъжност и тип виза се попълват от профила">+ Нов случай за работника</a>{% endif %}
+</div>
+<p class="intro">{{ 'Промените тук влизат във всички документи, генерирани след запис. Вече генерираните PDF не се променят.' if row else 'Попълнете данните и натиснете „Запиши работника“ най-долу. Профилът се записва, когато са попълнени всички полета със звездичка и е избран работодател.' }}</p>
+{{ error_box(errors) }}
+
+<section class="panel mrz" id="mrz-panel">
+  <h2>Попълни от паспорта (по желание)</h2>
+  <p class="help">Изберете снимка или PDF на страницата със снимката и натиснете „Разчети скана“. Програмата чете двата реда с <code>&lt;&lt;&lt;</code> най-долу и попълва: латиница, паспорт №, пол, дата на раждане, валиден до, гражданство, издаден от. Попълнените полета светват в жълто. <b>Нищо не се записва, докато не натиснете „Запиши работника“.</b> Датата на издаване и имената на кирилица въведете ръчно.</p>
+  <div class="mrz-row">
+    <input type="file" id="mrz-file" accept="image/*,.pdf" aria-label="Изберете скан на паспорта за разчитане" title="Снимка (JPG, PNG) или PDF на страницата със снимката">
+    <button type="button" class="btn" id="mrz-read" {{ 'disabled' if not ocr }} title="Чете избрания скан и попълва полетата отдолу. Не записва нищо.">Разчети скана</button>
+    <span class="muted">или</span>
+    <button type="button" class="btn link" id="mrz-toggle" title="Отваря поле, в което да поставите двата реда с <<< (копирани или преписани)">поставете двата реда ръчно</button>
+  </div>
+  {% if not ocr %}<p class="help">Разчитането от скан не е инсталирано на този компютър. Може да поставите двата реда ръчно или да попълните полетата.</p>{% endif %}
+  <div id="mrz-text-box" hidden>
+    <textarea id="mrz-text" rows="2" class="mono" placeholder="P&lt;UZBIVANOV&lt;&lt;PETR&lt;&lt;&lt;&lt;&lt;…&#10;AB1234567…"></textarea>
+    <button type="button" class="btn" id="mrz-parse" title="Чете поставените два реда и попълва полетата отдолу. Не записва нищо.">Разчети поставените редове</button>
+  </div>
+  <div id="mrz-result" role="status" aria-live="polite"></div>
+</section>
+
+<form method="post" enctype="multipart/form-data" class="grid-form" id="cand-form">
+  {% set req = fields|selectattr('required')|list %}
+  {% for f in req %}{{ field(f, values, errors, countries) }}{% endfor %}
+  <div class="field {{ 'has-error' if errors.get('employer_id') }}">
+    <label for="f-employer_id">Работодател <span class="req" aria-label="задължително">*</span></label>
+    <select id="f-employer_id" name="employer_id">
+      <option value="">— изберете —</option>
+      {% for e in employers %}<option value="{{ e.id }}" {{ 'selected' if values.get('employer_id')|string == e.id|string }}>{{ e.name }}</option>{% endfor %}
+    </select>
+    {% if errors.get('employer_id') %}<p class="err">{{ errors.employer_id }}</p>{% else %}<p class="help">От „База Работодатели“. Няма го? <a href="{{ url_for('employer') }}" target="_blank" title="Отваря нов работодател в нов раздел">Добавете работодател</a> и презаредете.</p>{% endif %}
+  </div>
+  <div class="field {{ 'has-error' if errors.get('workplace_address') }}">
+    <label for="f-workplace_address">Адрес на месторабота</label>
+    <select id="f-workplace_address" name="workplace_address" data-current="{{ values.get('workplace_address') or '' }}">
+      <option value="">—</option>
+      {% for a in addresses %}<option value="{{ a.address }}" data-emp="{{ a.employer_id }}" {{ 'selected' if values.get('workplace_address') == a.address and values.get('employer_id')|string == a.employer_id|string }}>{{ a.address }}</option>{% endfor %}
+    </select>
+    {% if errors.get('workplace_address') %}<p class="err">{{ errors.workplace_address }}</p>{% else %}<p class="help">Адресите на избрания работодател</p>{% endif %}
+  </div>
+  <div class="field {{ 'has-error' if errors.get('position_id') }}">
+    <label for="f-position_id">Длъжност</label>
+    <select id="f-position_id" name="position_id">
+      <option value="">—</option>
+      {% for p in positions %}<option value="{{ p.id }}" data-emp="{{ p.employer_id }}" {{ 'selected' if values.get('position_id')|string == p.id|string }}>{{ p.title }}{% if p.nkpd %} ({{ p.nkpd }}){% endif %}</option>{% endfor %}
+    </select>
+    <input id="f-position_new" name="position_new" value="{{ values.get('position_new') or '' }}" placeholder="или напишете нова длъжност" aria-label="Нова длъжност">
+    {% if errors.get('position_id') %}<p class="err">{{ errors.position_id }}</p>{% else %}<p class="help">Изберете от длъжностите на работодателя или напишете нова: тя се добавя към работодателя при запис</p>{% endif %}
+  </div>
+  {% for f in fields if not f.required %}{{ field(f, values, errors, countries) }}{% endfor %}
+  <div class="field wide">
+    <label for="f-scan">Скан на паспорта (за разчитане и справка)</label>
+    <input type="file" id="f-scan" name="passport_scan" accept="image/*,.pdf">
+    <p class="help">По желание. Файлът се записва при „Запиши работника“ и остава на този компютър.{% if row and row.passport_scan %} <a href="{{ url_for('candidate_scan', cid=row.id) }}" target="_blank" title="Отваря записания скан в нов раздел">Отвори записания скан</a>{% endif %}</p>
+  </div>
+  <div class="form-actions"><button class="btn primary" title="Записва всички полета на работника">Запиши работника</button></div>
+</form>
+
+{% if row %}
+{% set st, dls = step %}
+<section class="panel" id="pipeline">
+  <div class="head-row"><h2>Процес</h2>
+    <form method="post" action="{{ url_for('worker_run', cid=row.id) }}"><button class="btn primary" id="run-btn" {{ 'disabled' if not st.next }} title="Минава сам през етапите, докъдето стигат данните: проверява, пише обосновката и ДХ с AI, генерира документите и сменя статуса. Спира само там, където липсва нещо.">▶ Пусни процеса</button></form></div>
+  {% if run %}
+  <div class="run-result run-{{ run.stop.kind if run.stop else 'end' }}" id="run-result" role="status">
+    {% if run.done %}<p><b>Направено:</b> {% for a, b in run.done %}„{{ a }}“ → „{{ b }}“{{ ', ' if not loop.last }}{% endfor %}.</p>
+    {% else %}<p><b>Статусът не е сменен.</b></p>{% endif %}
+    {% if run.notes %}<ul class="run-notes">{% for n in run.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+    {% if run.stop %}<p><b>{{ run.stop.text }}</b></p>
+      {% if run.stop['items'] %}<ul class="checks">{% for label, link in run.stop['items'] %}<li class="bad"><span class="mark" aria-hidden="true">✗</span><span>{{ label }}{% if link %} – <a href="{{ link }}" title="Отваря мястото, където се попълва">{{ 'отворете' if 'AI' in label else ('качете' if link == '#attachments' else 'попълнете') }}</a>{% endif %}</span></li>{% endfor %}</ul>
+      <p class="help">След като попълните, натиснете „Пусни процеса“ пак. Продължава оттам, докъдето е стигнал.</p>{% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+  <ol class="stepper" aria-label="Етапи за тип виза {{ row.visa_type or '—' }}">
+    {% set ns = namespace(done=true) %}
+    {% for s in st.path %}
+      {% if s == st.current %}{% set ns.done = false %}<li class="cur" aria-current="step">{{ s }}</li>
+      {% elif ns.done and st.current in st.path %}<li class="done">{{ s }}</li>
+      {% else %}<li class="{{ 'next' if s == st.next }}">{{ s }}</li>{% endif %}
+    {% endfor %}
+  </ol>
+  <p class="help">Път за тип виза „{{ row.visa_type or 'не е избран (показан е пълният път)' }}“. „Пусни процеса“ минава всички етапи наведнъж; „Следваща стъпка“ мести само един. Статусът се мени само от тези бутони или ръчно от графика. Датите и файловете сами не го местят.</p>
+  {% if st.next %}
+    {% set run_listed = run and run.stop and run.stop.kind == 'blocked' %}
+    {% set blanks = st.checks|selectattr('blank')|list %}
+    {% if not run_listed %}<h3>Към „{{ st.next }}“ трябва:</h3>
+    <ul class="checks">
+    {% for c in st.checks if not c.blank %}
+      <li class="{{ 'ok' if c.ok else ('bad' if c.hard else 'soft') }}"><span class="mark" aria-hidden="true">{{ '✓' if c.ok else ('✗' if c.hard else '!') }}</span>
+        <span>{{ c.label }}{% if not c.ok %} – {% if c.link %}<a href="{{ c.link }}" title="Отваря мястото, където се попълва">{{ 'отворете' if 'AI' in c.label else ('качете' if c.link == '#attachments' else 'попълнете') }}</a>{% endif %}{% if not c.hard %} <span class="help">({{ 'не спира бутона за една стъпка, но „Пусни процеса“ спира тук' if c.auto else 'препоръчително, не спира стъпката' }})</span>{% endif %}{% endif %}</span></li>
+    {% else %}
+      {% if not blanks %}<li class="ok"><span class="mark" aria-hidden="true">✓</span><span>Няма какво да се проверява.</span></li>{% endif %}
+    {% endfor %}
+    </ul>{% endif %}
+    {% if blanks %}{% set nb = blanks|rejectattr('ok')|list|length %}
+    <details class="blanks"><summary title="Кои полета ще излязат като празен ред „……“ във всяка бланка. Не спират стъпката.">Бланки: {{ blanks|length - nb }} пълни, {{ nb }} с празни полета (излизат като „……“ за попълване на ръка)</summary>
+      <ul class="checks">{% for c in blanks %}<li class="{{ 'ok' if c.ok else 'soft' }}"><span class="mark" aria-hidden="true">{{ '✓' if c.ok else '!' }}</span><span>{{ c.text }}</span></li>{% endfor %}</ul>
+    </details>{% endif %}
+    {% if st.generate %}<p class="help">Тази стъпка генерира документите за типа виза (нов комплект в „Документи за Миграция“). Ако генерирането не успее, статусът не се сменя.</p>{% endif %}
+    {% if st.manual %}<p class="help">{{ st.manual }}</p>{% endif %}
+    <form method="post" action="{{ url_for('worker_next_step', cid=row.id) }}">
+      <input type="hidden" name="expected" value="{{ st.next }}">
+      <button class="btn" {{ 'disabled' if st.blocked }} title="{{ 'Първо попълнете отбелязаното с ✗' if st.blocked else 'Проверява данните' ~ (', генерира документите' if st.generate else '') ~ ' и сменя статуса на „' ~ st.next ~ '“. Записва се в историята.' }}">Следваща стъпка: {{ st.next }}</button>
+    </form>
+  {% else %}
+    <p class="help">{{ st.note }}</p>
+  {% endif %}
+  <h3>Срокове</h3>
+  {% if dls %}<ul class="deadlines">{% for level, text, link in dls %}<li class="dl-{{ level or 'none' }}"><a href="{{ link }}" title="Отваря полето с тази дата">{{ text }}</a></li>{% endfor %}</ul>
+  {% else %}<p class="help">Няма срокове в следващите {{ 14 }} дни.</p>{% endif %}
+</section>
+<section class="panel" id="schedule">
+  <div class="head-row"><h2>График</h2><a class="btn link" href="{{ url_for('schedule') }}" title="Отваря таблицата „Справки (График)“ с всички работници">Към графика</a></div>
+  <p class="help">Същите полета като в „Справки (График)“; промяната се вижда и на двете места. Датите не сменят статуса.</p>
+  <form method="post" action="{{ url_for('schedule_update', cid=row.id) }}" class="grid-form">
+    <div class="field">
+      <label for="s-status">Статус</label>
+      <select id="s-status" name="status" class="status-sel delay-{{ info.delay or 'none' }}">
+        {% for s in statuses %}<option {{ 'selected' if row.status == s }}>{{ s }}</option>{% endfor %}
+        {% if row.status not in statuses %}<option selected>{{ row.status }}</option>{% endif %}
+      </select>
+      <p class="help">{% if info.days_in_status is not none %}{{ info.days_in_status }} дни в този статус{% if info.delay %} – <b class="delay-text-{{ info.delay }}">{{ 'червено' if info.delay == 'red' else 'оранжево' }}</b>{% endif %}{% endif %}</p>
+    </div>
+    <div class="field">
+      <label for="s-assigned">Assigned (отговорник)</label>
+      <select id="s-assigned" name="assigned_user_id">
+        <option value="">Без отговорник</option>
+        {% for u in users %}<option value="{{ u.id }}" {{ 'selected' if row.assigned_user_id == u.id }}>{{ u.full_name or u.username }}</option>{% endfor %}
+      </select>
+    </div>
+    {% for k, label in sched_text %}<div class="field"><label for="s-{{ k }}">{{ label }}</label><input id="s-{{ k }}" name="{{ k }}" value="{{ row[k] }}"></div>{% endfor %}
+    {% for k, label in sched_dates %}<div class="field"><label for="s-{{ k }}">{{ label }}</label><input id="s-{{ k }}" name="{{ k }}" value="{{ row[k]|bgdate }}" placeholder="дд.мм.гггг" inputmode="numeric" autocomplete="off"></div>{% endfor %}
+    <div class="form-actions"><button class="btn primary" title="Записва статуса и датите от графика">Запиши графика</button></div>
+  </form>
+  <details class="addinfo-box">
+    <summary>Addition info</summary>
+    <dl class="kv">
+      <dt>Създаден</dt><dd>{{ info.created|bgdate if info.created }}</dd>
+      <dt>Последна смяна на статус</dt><dd>{{ info.status_changed|bgdate if info.status_changed }}</dd>
+      <dt>Дни в текущ статус</dt><dd>{{ info.days_in_status if info.days_in_status is not none }}</dd>
+      <dt>Индикация за забавяне</dt><dd>{{ {'red': 'червено', 'orange': 'оранжево'}.get(info.delay, 'няма') }}</dd>
+      <dt>Дни до изтичане на пребиваването</dt><dd>{{ info.residence_days if info.residence_days is not none else 'няма въведена дата' }}</dd>
+    </dl>
+    {% if history %}<h3>История на статуса</h3>
+    <table class="list"><thead><tr><th>Кога</th><th>От</th><th>Към</th><th>Кой</th></tr></thead><tbody>
+    {% for h in history %}<tr><td>{{ h.changed_at[:16] }}</td><td>{{ h.old_status }}</td><td>{{ h.new_status }}</td><td>{{ h.changed_by or '—' }}</td></tr>{% endfor %}
+    </tbody></table>{% endif %}
+  </details>
+</section>
+<section class="panel" id="documents">
+  <div class="head-row"><h2>Документи за „Миграция“</h2>
+    <form method="post" action="{{ url_for('worker_generate', cid=row.id) }}">
+      <button class="btn primary" {{ 'disabled' if plan.error or not plan.templates }}
+        title="Попълва бланките от комплекта за типа виза с данните от профила и работодателя. Всеки път прави нов комплект; старите остават.">Генерирай документи{% if plan.templates %} ({{ plan.templates|length }}){% endif %}</button>
+    </form>
+  </div>
+  {% if plan.error %}<p class="flash error">{{ plan.error }}</p>
+  {% else %}
+  <p class="help">Комплект за тип виза „{{ row.visa_type }}“ ({{ plan.case_type.name }}). Трудовият договор е на руски за Узбекистан и Киргизстан и на английски за всички останали; Invitation Letter е само за Индия и Непал. Условията по договора (срок, заплата…) се пазят в <a href="{{ url_for('case_edit', case_id=plan.case_id) if plan.case_id else url_for('case_edit', candidate_id=row.id) }}" title="Отваря условията по договора за този работник">случая</a>.</p>
+  {% if row.position_id %}<p><a class="btn" href="{{ url_for('position', pid=row.position_id) }}#ai-panel" title="Отваря длъжността на работника, където AI пише обосновката (3 години или удължаване) и длъжностната характеристика по реда от заданието">Обосновка и ДХ с AI</a></p>{% endif %}
+  {% if not pdf %}<p class="help">Няма програма за PDF на този компютър: правят се само Word файлове.</p>{% endif %}
+  <ul class="tpl-list">
+  {% for item in plan.templates %}
+    <li><b>{{ item.t.name }}</b>
+      {% if item.missing %}<span class="tag warn" title="Тези полета ще излязат като празен ред „……“">липсват {{ item.missing|length }}</span>
+        <details><summary title="Показва кои данни липсват">Кои?</summary><p class="small">{% for k, label in item.missing %}{{ label }}{{ ', ' if not loop.last }}{% endfor %}</p></details>
+      {% else %}<span class="tag ok" title="Всички полета на тази бланка имат стойност">всичко е попълнено</span>{% endif %}</li>
+  {% endfor %}
+  </ul>
+  {% endif %}
+  {% set g_list, g_files = gens %}
+  {% if g_list %}
+  <h3>Генерирани документи</h3>
+  <p class="help">Най-новият комплект е най-горе. Word (.docx) е за корекции; PDF е за преглед и печат.</p>
+  {% for g in g_list %}
+  <div class="gen">
+    <div class="head-row"><h4>{{ g.created_at[:10]|bgdate }} {{ g.created_at[11:16] }} · {{ g.ctype }}</h4>
+      <span>{% if g_files[g.id]|selectattr('docx_name')|list %}<a class="btn small" href="{{ url_for('generated_zip', gen_id=g.id, kind='docx') }}" title="Сваля всички Word файлове от този комплект в един .zip">Всички Word (zip)</a>{% endif %}
+      {% if g_files[g.id]|selectattr('pdf_name')|list %}<a class="btn small" href="{{ url_for('generated_zip', gen_id=g.id) }}" title="Сваля всички PDF от този комплект в един .zip">Всички PDF (zip)</a>{% endif %}</span></div>
+    <ul class="files">
+    {% for f in g_files[g.id] %}
+      <li>{% if f.docx_name %}<a href="{{ url_for('generated_file', gen_id=g.id, name=f.docx_name, dl=1) }}" title="Сваля попълнения Word файл">{{ f.template_name }} (Word)</a>{% else %}{{ f.template_name }}{% endif %}
+        {% if f.pdf_name %} · <a href="{{ url_for('generated_file', gen_id=g.id, name=f.pdf_name) }}" target="_blank" title="Отваря PDF в нов раздел">PDF</a>{% endif %}
+        {% if f.error and f.error != 'няма PDF' %} <span class="tag warn">{{ f.error }}</span>{% endif %}</li>
+    {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+  {% endif %}
+</section>
+<div id="attachments">{{ attachments(attach_groups, files, 'worker', row.id) }}</div>
+{% if current_user.is_super %}
+<form method="post" action="{{ url_for('candidate_delete', cid=row.id) }}" class="danger-zone" onsubmit="return confirm('Да изтрия ли работника, неговите случаи, генерирани документи и прикачени файлове? Не може да се върне.')">
+  <button class="btn danger" title="Изтрива работника. Само за супер юзър. Записът остава в историята на промените.">Изтрий работника</button>
+</form>
+{% endif %}
+<h2>Случаи на работника</h2>
+{% if cases %}
+<table class="list"><thead><tr><th>Вид случай (отваря случая)</th><th>Работодател</th><th>Създаден</th><th>Действие</th></tr></thead><tbody>
+{% for c in cases %}<tr><td><a href="{{ url_for('case_view', case_id=c.id) }}">{{ c.ctype }}</a></td><td>{{ c.employer }}</td><td class="muted">{{ c.created_at[:10]|bgdate }}</td>
+<td><a href="{{ url_for('case_edit', copy=c.id, candidate_id=row.id) }}" title="Създава нов случай за същия работник с копие на условията (напр. за удължаване). Старият случай не се променя.">Копирай като нов случай</a></td></tr>{% endfor %}
+</tbody></table>
+{% else %}<p class="empty">Работникът още няма случай. Натиснете „+ Нов случай за работника“ горе.</p>{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const out = document.getElementById('mrz-result');
+  const labels = {name_lat: 'Латиница', passport_no: 'Паспорт №', gender: 'Пол', birth_date: 'Роден',
+                  passport_expiry: 'Валидност', citizenship_id: 'Страна на произход', passport_issued_by: 'Издаден от'};
+  function show(msg, cls) { out.className = 'mrz-out ' + (cls || ''); out.textContent = msg; }
+  function apply(data) {
+    const filled = [], changed = [];
+    for (const [k, v] of Object.entries(data.fields)) {
+      if (v === '' || v === null) continue;
+      const el = document.getElementById('f-' + k);
+      if (!el) continue;
+      if (el.value && el.value !== String(v)) changed.push(labels[k] + ': „' + (el.selectedOptions ? el.selectedOptions[0].text : el.value) + '“ → „' + (el.tagName === 'SELECT' ? (el.querySelector('option[value="' + v + '"]') || {}).text : v) + '“');
+      el.value = v;
+      el.classList.add('from-mrz');
+      filled.push(labels[k]);
+    }
+    const clean = data.valid && !data.warnings.length;
+    let msg = (clean ? 'Разчетено, контролните цифри съвпадат. ' : 'Разчетено с предупреждения. ') +
+              'Попълнени: ' + filled.join(', ') + '.';
+    if (changed.length) msg += ' Променени: ' + changed.join('; ') + '.';
+    if (data.warnings.length) msg += ' ' + data.warnings.join(' ');
+    if (!data.fields.citizenship_id && data.nationality) msg += ' Гражданство „' + data.nationality + '“ не е в списъка с държави.';
+    msg += ' Проверете жълтите полета и натиснете „Запиши работника“ най-долу.';
+    show(msg, clean ? 'ok' : 'warn');
+  }
+  let latest = 0;  // only the newest request may change the form
+  async function send(body) {
+    const id = ++latest;
+    show('Разчитане…');
+    try {
+      const r = await fetch('{{ url_for("mrz_read") }}', {method: 'POST', body});
+      const data = await r.json();
+      if (id !== latest) return;
+      if (!r.ok) return show(data.error || 'Разчитането не успя. Попълнете полетата ръчно.', 'error');
+      apply(data);
+    } catch (e) { if (id === latest) show('Няма връзка с програмата. Проверете дали черният прозорец е отворен и опитайте пак.', 'error'); }
+  }
+  document.getElementById('mrz-read').addEventListener('click', () => {
+    const f = document.getElementById('mrz-file').files[0];
+    if (!f) return show('Изберете файл.', 'error');
+    const fd = new FormData(); fd.append('scan', f); send(fd);
+  });
+  document.getElementById('mrz-toggle').addEventListener('click', () => {
+    const b = document.getElementById('mrz-text-box'); b.hidden = !b.hidden;
+  });
+  // Address and position lists show only the chosen employer's entries.
+  const emp = document.getElementById('f-employer_id');
+  function filterByEmployer() {
+    ['f-workplace_address', 'f-position_id'].forEach(function (id) {
+      const sel = document.getElementById(id);
+      sel.querySelectorAll('option[data-emp]').forEach(function (o) {
+        const show = o.dataset.emp === emp.value;
+        o.hidden = !show; o.disabled = !show;
+        if (!show && o.selected) sel.value = '';
+      });
+    });
+  }
+  emp.addEventListener('change', filterByEmployer); filterByEmployer();
+  document.getElementById('mrz-parse').addEventListener('click', () => {
+    const fd = new FormData(); fd.append('mrz_text', document.getElementById('mrz-text').value); send(fd);
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Docautomate{% endblock %} · Docautomate</title>
+<link rel="preload" href="{{ url_for('static', filename='fonts/golos-text-cyrillic-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="{{ url_for('home') }}" title="Начална страница: преглед и бърз старт"><span class="brand-mark" aria-hidden="true">D</span><span class="brand-text">Docautomate<small>Документи за чужденци</small></span></a>
+  {% if current_user %}
+  <nav aria-label="Главно меню">
+    {% set ep = request.endpoint or '' %}
+    <a href="{{ url_for('home') }}" class="{{ 'on' if ep == 'home' }}"
+       title="Управленско табло: забавяния, работници по статус, изтичащо пребиваване и календар.">Табло</a>
+    <a href="{{ url_for('employers') }}" class="{{ 'on' if ep.startswith('employer') or ep == 'position' }}"
+       title="База Работодатели: фирмите, техните адреси, длъжности и документи.">База Работодатели</a>
+    <a href="{{ url_for('candidates') }}" class="{{ 'on' if ep.startswith('candidate') }}"
+       title="База Работници: лични и паспортни данни, работодател, тип виза и прикачени документи.">База Работници</a>
+    <a href="{{ url_for('schedule') }}" class="{{ 'on' if ep.startswith('schedule') }}"
+       title="Справки (График): статуси и дати на всички работници, оцветяване при забавяне.">Справки (График)</a>
+    <a href="{{ url_for('board') }}" class="{{ 'on' if ep == 'board' }}"
+       title="Изглед по статуси: колона за всеки статус с картите на работниците.">По статуси</a>
+    <a href="{{ url_for('reports_page') }}" class="{{ 'on' if ep == 'reports_page' }}"
+       title="Рапорти: забавяне, движение за седмицата, изтичащо пребиваване, време между етапите, справка за работодател.">Рапорти</a>
+    <a href="{{ url_for('cases') }}" class="{{ 'on' if ep.startswith('case') and ep != 'case_types' }}"
+       title="Случаи: оттук се генерират документите за работник при работодател.">Случаи</a>
+    <a href="{{ url_for('templates') }}" class="{{ 'on' if ep.startswith('template') or ep == 'placeholders' }}"
+       title="Бланки: Word файловете, от които се правят документите. Качване и избор за всеки вид случай.">Бланки</a>
+    <span class="sep">Настройки</span>
+    <a href="{{ url_for('case_types') }}" class="minor {{ 'on' if ep == 'case_types' }}"
+       title="Видове случаи: например 3 години, 3 месеца, удължаване. Видът избира кои бланки се генерират.">Видове случаи</a>
+    <a href="{{ url_for('countries') }}" class="minor {{ 'on' if ep == 'countries' }}"
+       title="Държави: имената на гражданството на български и руски, както влизат в документите.">Държави</a>
+    <a href="{{ url_for('import_page') }}" class="minor {{ 'on' if ep == 'import_page' }}"
+       title="Импорт: еднократно прехвърляне на кандидатите от Airtable.">Импорт</a>
+    {% if current_user.is_super %}
+    <a href="{{ url_for('users') }}" class="minor {{ 'on' if ep == 'users' }}"
+       title="Потребители: кой има достъп, супер юзъри, нови пароли. Само за супер юзър.">Потребители</a>
+    <a href="{{ url_for('mail_settings') }}" class="minor {{ 'on' if ep == 'mail_settings' }}"
+       title="Имейл рапорти: пощата, от която програмата праща рапортите, и часът. Само за супер юзър.">Имейл рапорти</a>
+    <a href="{{ url_for('history') }}" class="minor {{ 'on' if ep == 'history' }}"
+       title="История на промените: кой, кога и какво е променил. Само за супер юзър.">История на промените</a>
+    {% endif %}
+  </nav>
+  <div class="who">
+    <span title="Влезли сте като този потребител">{{ current_user.full_name or current_user.username }}{% if current_user.is_super %} · супер юзър{% endif %}</span>
+    <a href="{{ url_for('account') }}" title="Смяна на собствената парола">парола</a>
+    <form method="post" action="{{ url_for('logout') }}" class="inline"><button class="btn link" title="Излиза от програмата на този компютър">изход</button></form>
+  </div>
+  {% endif %}
+</header>
+<main>
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% for cat, m in msgs %}<div class="flash {{ cat }}" role="status">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  {% block body %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

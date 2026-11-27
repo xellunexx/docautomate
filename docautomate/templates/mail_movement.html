@@ -1,0 +1,9 @@
+<div style="font-family:Arial,sans-serif;font-size:14px">
+<h2>Миналата седмица: {{ m.last[0].strftime('%d.%m') }} – {{ m.last[1].strftime('%d.%m.%Y') }}</h2>
+<p>Входирания: <b>{{ m.filed }}</b> · Разрешения: <b>{{ m.permits }}</b> · Визи: <b>{{ m.visas }}</b> · Събития: <b>{{ m.last_events|length }}</b></p>
+<ul>{% for e in m.last_events %}<li>{{ e.date.strftime('%d.%m') }} · {{ e.label }} · № {{ e.r.ref_no }} {{ e.r.name_cyr or e.r.name_lat }} · {{ e.r.employer or '' }} · {{ e.r.assigned }}</li>{% endfor %}</ul>
+<h2>Започващата седмица: {{ m.next[0].strftime('%d.%m') }} – {{ m.next[1].strftime('%d.%m.%Y') }}</h2>
+{% if m.next_events %}<table cellpadding="4" style="border-collapse:collapse" border="1"><tr><th>Дата</th><th>Събитие</th><th>Работник</th><th>Работодател</th><th>Assigned</th></tr>
+{% for e in m.next_events %}<tr><td>{{ e.date.strftime('%d.%m.%Y') }}</td><td>{{ e.label }}</td><td><a href="{{ base }}/candidates/{{ e.r.id }}">№ {{ e.r.ref_no }} {{ e.r.name_cyr or e.r.name_lat }}</a></td><td>{{ e.r.employer or '' }}</td><td>{{ e.r.assigned }}</td></tr>{% endfor %}
+</table>{% else %}<p>Няма планирани събития.</p>{% endif %}
+</div>

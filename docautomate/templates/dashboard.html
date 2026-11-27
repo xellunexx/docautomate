@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% block title %}Табло{% endblock %}
+{% macro worker_link(r) -%}<a href="{{ url_for('candidate', cid=r.id) }}" title="Отваря профила на работника">№ {{ r.ref_no }} {{ r.name_cyr or r.name_lat }}</a>{%- endmacro %}
+{% macro keep(skip=()) -%}{% for k, vs in request.args.lists() if k not in skip %}{% for v in vs %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}{% endfor %}{%- endmacro %}
+{% block body %}
+<div class="head-row">
+  <h1>Управленско табло</h1>
+  <div class="actions">
+    <a class="btn primary" href="{{ url_for('candidate') }}" title="Отваря празен профил за нов работник">+ Нов работник</a>
+    <a class="btn" href="{{ url_for('employer') }}" title="Отваря празен профил за нов работодател">+ Нов работодател</a>
+  </div>
+</div>
+<form class="filters" method="get" aria-label="Филтри на таблото">
+  {% include '_dash_filters.html' %}
+  <label class="small">От <input name="from" value="{{ start|bgdate }}" size="10" placeholder="дд.мм.гггг" aria-label="От дата"></label>
+  <label class="small">До <input name="to" value="{{ end|bgdate }}" size="10" placeholder="дд.мм.гггг" aria-label="До дата"></label>
+  <button class="btn" title="Прилага филтрите и периода">Покажи</button>
+  {% if request.args %}<a class="btn link" href="{{ url_for('home') }}" title="Връща текущата седмица без филтри">Изчисти</a>{% endif %}
+</form>
+<p class="muted small">Период: {{ start|bgdate }} – {{ end|bgdate }} (двете дати се включват). Забавянията, статусите и сроковете на пребиваване са към днес, {{ today|bgdate }}.</p>
+
+<section class="kpis">
+  <details class="kpi {{ 'red' if delayed|selectattr('delay', 'eq', 'red')|list }}">
+    <summary title="Работници в червено или оранжево според праговете за статуса. Кликнете за списъка.">
+      <b>{{ delayed|length }}</b><span>забавяния</span>
+      <small>{{ delayed|selectattr('delay', 'eq', 'red')|list|length }} червени · {{ delayed|selectattr('delay', 'eq', 'orange')|list|length }} оранжеви</small></summary>
+    {% if delayed %}<table class="list small"><thead><tr><th>Работник</th><th>Работодател</th><th>Статус</th><th class="num">Дни</th><th>Assigned</th></tr></thead><tbody>
+    {% for x in delayed %}<tr><td>{{ worker_link(x.r) }}</td><td>{{ x.r.employer or '' }}</td><td><span class="tag delay-{{ x.delay }}">{{ x.r.status }}</span></td><td class="num">{{ x.days_in_status }}</td><td>{{ x.r.assigned }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="empty">Няма забавяния.</p>{% endif %}
+  </details>
+  <details class="kpi {{ 'orange' if stalled }}">
+    <summary title="Работници без смяна на статуса от {{ stall_days }} или повече дни, които имат следваща стъпка. Кликнете за списъка.">
+      <b>{{ stalled|length }}</b><span>без движение</span><small>{{ stall_days }}+ дни в същия статус</small></summary>
+    {% if stalled %}<table class="list small"><thead><tr><th>Работник</th><th>Статус</th><th class="num">Дни</th><th>Следваща стъпка</th><th>Assigned</th></tr></thead><tbody>
+    {% for x in stalled %}<tr><td>{{ worker_link(x.r) }}</td><td>{{ x.r.status }}</td><td class="num">{{ x.days }}</td><td>{{ x.next }}</td><td>{{ x.r.assigned }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="empty">Всички работници са в движение.</p>{% endif %}
+  </details>
+  <details class="kpi">
+    <summary title="Брой работници във всеки текущ статус. Кликнете за разбивката."><b>{{ rows|length }}</b><span>работници</span><small>по статус – кликнете</small></summary>
+    <ul class="status-counts">{% for s, n in status_counts %}<li><a href="{{ url_for('schedule', status=s) }}" title="Отваря графика само с този статус">{{ s }}</a> <b>{{ n }}</b></li>{% endfor %}</ul>
+  </details>
+  <details class="kpi {{ 'red' if residence.red else '' }}">
+    <summary title="Дни до „Срок на пребиваване“: червено 0–60, оранжево 61–90, жълто 91–120. Кликнете за списъците.">
+      <b>{{ residence.red|length + residence.orange|length + residence.yellow|length }}</b><span>пребиваване изтича скоро</span>
+      <small><span class="res-red">{{ residence.red|length }}</span> · <span class="res-orange">{{ residence.orange|length }}</span> · <span class="res-yellow">{{ residence.yellow|length }}</span> · изтекли {{ residence.expired|length }} · без дата {{ residence.none|length }}</small></summary>
+    {% for key, label in [('red', 'Червено · 0–60 дни'), ('orange', 'Оранжево · 61–90 дни'), ('yellow', 'Жълто · 91–120 дни'), ('expired', 'Изтекъл срок')] %}
+      {% if residence[key] %}<h4 class="res-{{ key }}">{{ label }} ({{ residence[key]|length }})</h4><ul class="plain">
+      {% for x in residence[key] %}<li>{{ worker_link(x.r) }} – {{ x.r.residence_until|bgdate }} ({{ x.days }} дни) · {{ x.r.employer or '' }} · {{ x.r.assigned }}</li>{% endfor %}</ul>{% endif %}
+    {% endfor %}
+    {% if residence.none %}<p class="muted small">Без въведена дата: {{ residence.none|length }}</p>{% endif %}
+  </details>
+  <details class="kpi">
+    <summary title="Събития от петте вида в избрания период. Кликнете за списъка."><b>{{ events|length }}</b><span>събития за периода</span>
+      <small>{% for k, l in event_kinds %}{{ l }} {{ event_counts[k] }}{{ ' · ' if not loop.last }}{% endfor %}</small></summary>
+    {% if events %}<ul class="plain">{% for e in events %}<li>{{ e.date|bgdate }} · <b>{{ e.label }}</b> · {{ worker_link(e.r) }} · {{ e.r.employer or '' }} · {{ e.r.assigned }}</li>{% endfor %}</ul>
+    {% else %}<p class="empty">Няма събития в периода.</p>{% endif %}
+  </details>
+</section>
+
+<section class="panel" id="calendar">
+  <div class="head-row">
+    <h2>Календар {% if not custom %}– {{ MONTHS_BG[start.month] if view == 'month' else start|bgdate ~ ' – ' ~ end|bgdate }}{% if view == 'month' %} {{ start.year }}{% endif %}{% endif %}</h2>
+    <div class="actions">
+      {% if not custom %}
+      <a class="btn small" href="{{ url_for('home', **dict(request.args.to_dict(flat=False), at=prev_at.isoformat(), view=view)) }}#calendar" title="Предишен период">‹</a>
+      <a class="btn small" href="{{ url_for('home', view=view) }}#calendar" title="Връща към текущия период">днес</a>
+      <a class="btn small" href="{{ url_for('home', **dict(request.args.to_dict(flat=False), at=next_at.isoformat(), view=view)) }}#calendar" title="Следващ период">›</a>
+      {% endif %}
+      <a class="btn small {{ 'primary' if view == 'week' and not custom }}" href="{{ url_for('home', view='week') }}#calendar" title="Седмичен изглед: понеделник – неделя">Седмица</a>
+      <a class="btn small {{ 'primary' if view == 'month' and not custom }}" href="{{ url_for('home', view='month') }}#calendar" title="Месечен изглед">Месец</a>
+    </div>
+  </div>
+  <form class="filters" method="get" aria-label="Вид събитие">
+    {{ keep(('kind',)) }}
+    {% for k, l in event_kinds %}<label class="check"><input type="checkbox" name="kind" value="{{ k }}" {{ 'checked' if k in kinds }}> {{ l }}</label>{% endfor %}
+    <button class="btn small" title="Показва само избраните видове събития">Филтрирай</button>
+  </form>
+  <table class="cal {{ view }}">
+    <thead><tr>{% for d in DAYS_BG %}<th>{{ d }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for week in weeks %}<tr>
+      {% for day in week %}<td class="{{ 'out' if not day.in_range }} {{ 'today' if day.date == today }}">
+        <div class="cal-day">{{ day.date.day }}{% if day.date.day == 1 or loop.first and loop.index0 == 0 %} {{ MONTHS_BG[day.date.month][:3] }}{% endif %}</div>
+        {% for e in day.events %}<a class="cal-card ev-{{ e.field }}" href="{{ url_for('candidate', cid=e.r.id) }}" title="{{ e.label }} · {{ e.date|bgdate }} · {{ e.r.name_cyr }} · № {{ e.r.ref_no }} · {{ e.r.assigned }}">
+          <b>{{ e.label }}</b><span>№ {{ e.r.ref_no }} {{ e.r.name_cyr or e.r.name_lat }}</span><small>{{ e.r.assigned }}</small></a>{% endfor %}
+      </td>{% endfor %}
+    </tr>{% endfor %}
+    </tbody>
+  </table>
+</section>
+{% if not pdf %}<p class="muted small">Няма програма за PDF на този компютър: документите излизат само в Word.</p>{% endif %}
+{% endblock %}

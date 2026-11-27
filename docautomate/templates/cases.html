@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Случаи{% endblock %}
+{% block body %}
+<div class="head-row">
+  <h1>Случаи</h1>
+  <form class="search" method="get" role="search"><input name="q" value="{{ q }}" placeholder="Кандидат, фирма или паспорт" aria-label="Търси случай по кандидат, фирма или паспорт"><button class="btn" title="Показва само случаите, които съдържат този текст">Търси</button>{% if q %}<a class="btn link" href="{{ url_for('cases') }}" title="Показва всички случаи">Изчисти</a>{% endif %}</form>
+  <a class="btn primary" href="{{ url_for('case_edit') }}" title="Отваря празен формуляр за нов случай">+ Нов случай</a>
+</div>
+<p class="intro">Един случай = един кандидат при един работодател, с вид случай и условия по договора. Отворете случая, за да генерирате PDF.</p>
+{% if rows %}
+<table class="list">
+  <thead><tr><th>Кандидат (отваря случая)</th><th>Работодател</th><th>Длъжност</th><th>Вид случай</th><th>Последно генерирани</th><th>Действие</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><a href="{{ url_for('case_view', case_id=r.id) }}" title="Отваря случая: генериране на PDF и история">{{ r.name_cyr }}</a></td>
+    <td>{{ r.employer }}</td><td>{{ r.position or '—' }}</td><td>{{ r.ctype }}</td>
+    <td class="muted">{{ (r.last_gen[:10]|bgdate ~ ' ' ~ r.last_gen[11:16]) if r.last_gen else 'още не' }}</td>
+    <td><a href="{{ url_for('case_edit', copy=r.id) }}" title="Създава нов случай с копие на условията. Изберете друг кандидат или същия за удължаване. Старият не се променя.">Копирай като нов</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="empty">{{ 'Няма случай с „' ~ q ~ '“.' if q else 'Още няма случаи. Натиснете „+ Нов случай“.' }}</p>{% endif %}
+{% endblock %}

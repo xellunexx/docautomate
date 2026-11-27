@@ -1,0 +1,8 @@
+<div style="font-family:Arial,sans-serif;font-size:14px">
+<h2>Забавяне по статус – {{ today.strftime('%d.%m.%Y') }}</h2>
+<p>Червени: <b>{{ items|selectattr('delay','eq','red')|list|length }}</b> · Оранжеви: <b>{{ items|selectattr('delay','eq','orange')|list|length }}</b></p>
+{% if items %}<table cellpadding="4" style="border-collapse:collapse" border="1">
+<tr><th>Работник</th><th>Работодател</th><th>Assigned</th><th>Статус</th><th>От</th><th>Дни</th><th>Линк</th></tr>
+{% for x in items %}<tr style="background:{{ '#fdecea' if x.delay == 'red' else '#fff1db' }}"><td>№ {{ x.r.ref_no }} {{ x.r.name_cyr or x.r.name_lat }}</td><td>{{ x.r.employer or '' }}</td><td>{{ x.r.assigned }}</td><td>{{ x.r.status }}</td><td>{{ x.status_start.strftime('%d.%m.%Y') if x.status_start }}</td><td>{{ x.days_in_status }}</td><td><a href="{{ base }}/candidates/{{ x.r.id }}">профил</a></td></tr>{% endfor %}
+</table>{% else %}<p>Няма забавени записи (0).</p>{% endif %}
+</div>

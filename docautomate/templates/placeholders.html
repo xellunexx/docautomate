@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Полета за бланките{% endblock %}
+{% block body %}
+<p class="crumbs"><a href="{{ url_for('templates') }}">Бланки</a> /</p>
+<h1>Полета за бланките</h1>
+<p class="intro">Пишете тези полета в Word бланката. При генериране всяко поле се заменя с данните на случая. Кликнете поле, за да го копирате.</p>
+<section class="panel cheat">
+  <h2>Как се пише</h2>
+  <ul>
+    <li>Стойност: <code>{{ '{{ candidate.name_cyr }}' }}</code></li>
+    <li>Според пола: <code>{{ '{{ candidate.roden }}' }}</code> дава „роден“ или „родена“. Или: <code>{{ "{% if candidate.female %}г-жа{% else %}г-н{% endif %}" }}</code></li>
+    <li>Само при удължаване: <code>{{ "{% if case.is_extension %}…текст…{% endif %}" }}</code></li>
+    <li>Списък (напр. задължения в ДХ) – три отделни реда в Word, всеки на свой ред:<br>
+      <code>{{ '{%p for x in position.dh_duties %}' }}</code><br><code>{{ '{{ x }}' }}</code> ← форматирайте този ред като номериран списък<br><code>{{ '{%p endfor %}' }}</code></li>
+    <li>Абзаци на обосновката: същото с <code>position.obosnovka_paragraphs</code>. По-просто: <code>{{ '{{ position.obosnovka }}' }}</code> (всички абзаци в един, с нови редове).</li>
+    <li>Празно поле излиза като „……………………“ за попълване на ръка.</li>
+  </ul>
+</section>
+<table class="list">
+  <thead><tr><th>Поле (клик = копира)</th><th>Какво се попълва</th><th>Пример</th></tr></thead>
+  <tbody>
+  {% for key, (label, example) in placeholders.items() %}
+  <tr>
+    <td><code class="copy" title="Кликнете, за да копирате">{{ ('{%p for x in ' ~ key ~ ' %}') if key in list_fields else ('{{ ' ~ key ~ ' }}') }}</code></td>
+    <td>{{ label }}</td><td class="muted">{{ example }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll('code.copy').forEach(c => c.addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(c.textContent); c.classList.add('copied'); setTimeout(() => c.classList.remove('copied'), 900); }
+  catch (e) { /* clipboard blocked: the text is still selectable */ }
+}));
+</script>
+{% endblock %}

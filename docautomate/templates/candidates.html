@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}База Работници{% endblock %}
+{% macro row_cells(r) -%}
+<tr class="row-link" data-href="{{ url_for('candidate', cid=r.id) }}">
+  <td class="num muted">{{ r.ref_no }}</td>
+  <td><a href="{{ url_for('candidate', cid=r.id) }}" title="Отваря профила на работника">{{ r.name_cyr or '(без име)' }}</a></td>
+  <td class="run-cell"><span class="small">{{ r.status }}</span><form method="post" action="{{ url_for('worker_run', cid=r.id) }}" class="inline-run"><button class="btn small" title="Пуска процеса за този работник: минава етапите, докъдето стигат данните, и отваря профила с резултата">▶ Пусни</button></form></td>
+  <td>{{ r.name_lat }}</td><td>{{ r.passport_no }}</td><td>{{ r.citizenship or '' }}</td>
+  <td>{{ r.birth_date|bgdate }}</td><td>{{ r.employer or '' }}</td><td>{{ r.position or '' }}</td><td>{{ r.visa_type }}</td><td>{{ r.contact }}</td>
+</tr>
+{%- endmacro %}
+{% macro head() -%}
+<thead><tr><th class="num">№</th><th>Име на кирилица</th><th>Статус</th><th>Име на латиница</th><th>Паспорт №</th><th>Страна на произход</th>
+<th>Дата на раждане</th><th>Работодател</th><th>Длъжност</th><th>Тип виза</th><th>Контакт</th></tr></thead>
+{%- endmacro %}
+{% block body %}
+<div class="head-row">
+  <h1>База Работници</h1>
+  <a class="btn primary" href="{{ url_for('candidate') }}" title="Отваря празен профил за нов работник">+ Нов работник</a>
+</div>
+<form class="filters" method="get" role="search" aria-label="Филтри">
+  <input name="q" value="{{ q }}" placeholder="Име, паспорт, телефон или №" aria-label="Търси работник">
+  <select name="employer" aria-label="Филтър по работодател"><option value="">Всички работодатели</option>
+    {% for e in employers %}<option value="{{ e.id }}" {{ 'selected' if f_emp == e.id }}>{{ e.name }}</option>{% endfor %}</select>
+  <select name="country" aria-label="Филтър по страна на произход"><option value="">Всички страни</option>
+    {% for c in countries %}<option value="{{ c.id }}" {{ 'selected' if f_country == c.id }}>{{ c.name }}</option>{% endfor %}</select>
+  <select name="visa" aria-label="Филтър по тип виза"><option value="">Всички типове виза</option>
+    {% for v in VISA_TYPES %}<option value="{{ v }}" {{ 'selected' if f_visa == v }}>{{ v }}</option>{% endfor %}
+    <option value="-" {{ 'selected' if f_visa == '-' }}>без тип виза</option></select>
+  <label class="check"><input type="checkbox" name="group" value="employer" {{ 'checked' if group }}> Групирай по работодател</label>
+  <button class="btn" title="Прилага търсенето, филтрите и групирането">Покажи</button>
+  {% if q or f_emp or f_country or f_visa or group %}<a class="btn link" href="{{ url_for('candidates') }}" title="Маха всички филтри">Изчисти</a>{% endif %}
+</form>
+{% if rows %}
+<p class="muted small">Показани: {{ rows|length }}{% if rows|length == 1000 %} (първите 1000, стеснете филтрите){% endif %}. Кликнете ред, за да отворите профила.</p>
+<div class="table-wrap">
+{% if group %}
+  {% for name, items in groups %}
+  <h2 class="group-head">{{ name }} <span class="muted">({{ items|length }})</span></h2>
+  <table class="list">{{ head() }}<tbody>{% for r in items %}{{ row_cells(r) }}{% endfor %}</tbody></table>
+  {% endfor %}
+{% else %}
+  <table class="list">{{ head() }}<tbody>{% for r in rows %}{{ row_cells(r) }}{% endfor %}</tbody></table>
+{% endif %}
+</div>
+{% else %}
+<p class="empty">{{ 'Няма работници, които отговарят на филтрите.' if (q or f_emp or f_country or f_visa) else 'Още няма работници. Натиснете „+ Нов работник“ или прехвърлете от Airtable (меню Импорт).' }}</p>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% include '_rowlink.html' %}{% endblock %}
