@@ -432,3 +432,11 @@ table.cal td.today { outline: 2px solid var(--accent); outline-offset: -2px; }
 .deadlines .dl-red { background: var(--err-bg); border-color: var(--err-line); color: var(--err); }
 .deadlines .dl-orange { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
 .deadlines .dl-yellow { background: #fffbe8; border-color: #e8cf7a; }
+/* „Пусни процеса“: summary of the one-click run */
+.run-result { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 14px; margin: 0 0 12px; background: var(--sunken); }
+.run-result p { margin: 4px 0; }
+.run-result.run-blocked, .run-result.run-error { background: var(--warn-bg); border-color: var(--warn-line); }
+.run-result.run-end { background: var(--ok-bg); border-color: var(--ok-line); }
+.run-notes { margin: 4px 0; padding-left: 1.2em; }
+td form.inline-run { margin: 0; }
+td.run-cell { white-space: nowrap; } td.run-cell form { display: block; margin-top: 4px; }

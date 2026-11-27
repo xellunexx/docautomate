@@ -67,7 +67,19 @@
 {% if row %}
 {% set st, dls = step %}
 <section class="panel" id="pipeline">
-  <div class="head-row"><h2>Процес: следваща стъпка</h2></div>
+  <div class="head-row"><h2>Процес</h2>
+    <form method="post" action="{{ url_for('worker_run', cid=row.id) }}"><button class="btn primary" id="run-btn" {{ 'disabled' if not st.next }} title="Минава сам през етапите, докъдето стигат данните: проверява, пише обосновката и ДХ с AI, генерира документите и сменя статуса. Спира само там, където липсва нещо.">▶ Пусни процеса</button></form></div>
+  {% if run %}
+  <div class="run-result run-{{ run.stop.kind if run.stop else 'end' }}" id="run-result" role="status">
+    {% if run.done %}<p><b>Направено:</b> {% for a, b in run.done %}„{{ a }}“ → „{{ b }}“{{ ', ' if not loop.last }}{% endfor %}.</p>
+    {% else %}<p><b>Статусът не е сменен.</b></p>{% endif %}
+    {% if run.notes %}<ul class="run-notes">{% for n in run.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+    {% if run.stop %}<p><b>{{ run.stop.text }}</b></p>
+      {% if run.stop['items'] %}<ul class="checks">{% for label, link in run.stop['items'] %}<li class="bad"><span class="mark" aria-hidden="true">✗</span><span>{{ label }}{% if link %} – <a href="{{ link }}" title="Отваря мястото, където се попълва">{{ 'отворете' if 'AI' in label else ('качете' if link == '#attachments' else 'попълнете') }}</a>{% endif %}</span></li>{% endfor %}</ul>
+      <p class="help">След като попълните, натиснете „Пусни процеса“ пак. Продължава оттам, докъдето е стигнал.</p>{% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
   <ol class="stepper" aria-label="Етапи за тип виза {{ row.visa_type or '—' }}">
     {% set ns = namespace(done=true) %}
     {% for s in st.path %}
@@ -76,26 +88,28 @@
       {% else %}<li class="{{ 'next' if s == st.next }}">{{ s }}</li>{% endif %}
     {% endfor %}
   </ol>
-  <p class="help">Път за тип виза „{{ row.visa_type or 'не е избран (показан е пълният път)' }}“. Статусът се мени само с този бутон или ръчно от графика. Датите и файловете не го местят.</p>
+  <p class="help">Път за тип виза „{{ row.visa_type or 'не е избран (показан е пълният път)' }}“. „Пусни процеса“ минава всички етапи наведнъж; „Следваща стъпка“ мести само един. Статусът се мени само от тези бутони или ръчно от графика. Датите и файловете сами не го местят.</p>
   {% if st.next %}
-    <h3>Към „{{ st.next }}“ трябва:</h3>
+    {% set run_listed = run and run.stop and run.stop.kind == 'blocked' %}
     {% set blanks = st.checks|selectattr('blank')|list %}
+    {% if not run_listed %}<h3>Към „{{ st.next }}“ трябва:</h3>
     <ul class="checks">
     {% for c in st.checks if not c.blank %}
       <li class="{{ 'ok' if c.ok else ('bad' if c.hard else 'soft') }}"><span class="mark" aria-hidden="true">{{ '✓' if c.ok else ('✗' if c.hard else '!') }}</span>
-        <span>{{ c.label }}{% if not c.ok %} – {% if c.link %}<a href="{{ c.link }}" title="Отваря мястото, където се попълва">{{ 'отворете' if 'AI' in c.label else 'попълнете' }}</a>{% endif %}{% if not c.hard %} <span class="help">(препоръчително, не спира стъпката)</span>{% endif %}{% endif %}</span></li>
+        <span>{{ c.label }}{% if not c.ok %} – {% if c.link %}<a href="{{ c.link }}" title="Отваря мястото, където се попълва">{{ 'отворете' if 'AI' in c.label else ('качете' if c.link == '#attachments' else 'попълнете') }}</a>{% endif %}{% if not c.hard %} <span class="help">({{ 'не спира бутона за една стъпка, но „Пусни процеса“ спира тук' if c.auto else 'препоръчително, не спира стъпката' }})</span>{% endif %}{% endif %}</span></li>
     {% else %}
       {% if not blanks %}<li class="ok"><span class="mark" aria-hidden="true">✓</span><span>Няма какво да се проверява.</span></li>{% endif %}
     {% endfor %}
-    </ul>
+    </ul>{% endif %}
     {% if blanks %}{% set nb = blanks|rejectattr('ok')|list|length %}
     <details class="blanks"><summary title="Кои полета ще излязат като празен ред „……“ във всяка бланка. Не спират стъпката.">Бланки: {{ blanks|length - nb }} пълни, {{ nb }} с празни полета (излизат като „……“ за попълване на ръка)</summary>
       <ul class="checks">{% for c in blanks %}<li class="{{ 'ok' if c.ok else 'soft' }}"><span class="mark" aria-hidden="true">{{ '✓' if c.ok else '!' }}</span><span>{{ c.text }}</span></li>{% endfor %}</ul>
     </details>{% endif %}
     {% if st.generate %}<p class="help">Тази стъпка генерира документите за типа виза (нов комплект в „Документи за Миграция“). Ако генерирането не успее, статусът не се сменя.</p>{% endif %}
+    {% if st.manual %}<p class="help">{{ st.manual }}</p>{% endif %}
     <form method="post" action="{{ url_for('worker_next_step', cid=row.id) }}">
       <input type="hidden" name="expected" value="{{ st.next }}">
-      <button class="btn primary" {{ 'disabled' if st.blocked }} title="{{ 'Първо попълнете отбелязаното с ✗' if st.blocked else 'Проверява данните' ~ (', генерира документите' if st.generate else '') ~ ' и сменя статуса на „' ~ st.next ~ '“. Записва се в историята.' }}">Следваща стъпка: {{ st.next }}</button>
+      <button class="btn" {{ 'disabled' if st.blocked }} title="{{ 'Първо попълнете отбелязаното с ✗' if st.blocked else 'Проверява данните' ~ (', генерира документите' if st.generate else '') ~ ' и сменя статуса на „' ~ st.next ~ '“. Записва се в историята.' }}">Следваща стъпка: {{ st.next }}</button>
     </form>
   {% else %}
     <p class="help">{{ st.note }}</p>

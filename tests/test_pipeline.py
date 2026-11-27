@@ -207,4 +207,129 @@ def test_dashboard_lists_workers_without_movement(client, app):
     c.close()
     html = client.get("/").data.decode()
     assert "без движение" in html and "Стои Работник" in html
-    assert "Без движение 5 дни" in _step(client, cid)
+    # 5 days, or 6 when the run crosses midnight between the UPDATE above and the page
+    assert any(f"Без движение {n} дни" in _step(client, cid) for n in (5, 6))
+
+
+# ------------------------------------------------------------------ „Пусни процеса“: one click runs the whole path
+def test_run_needs_evidence_where_the_button_only_warns():
+    st = pipeline.plan_step(_w(), attachments=set(), doc_plan=None, position=None, today=TODAY)
+    assert not st.blocked and [c.label for c in st.run_blockers] == ["Няма прикачен файл: Паспорт и свидетелство за съдимост"]
+    st = pipeline.plan_step(_w(), attachments={"passport"}, doc_plan=None, position=None, today=TODAY)
+    assert not st.run_blockers
+    st = pipeline.plan_step(_w(status="Подаден Миграция"), attachments=set(), doc_plan=None, position=None, today=TODAY)
+    assert st.next == "Подаден АЗ" and st.manual and not st.blocked
+    st = pipeline.plan_step(_w(status="Готови документи"), attachments=set(), doc_plan=None, position=None, today=TODAY)
+    assert {c.link for c in st.run_blockers} == {"#s-in_no", "#s-filed_date"}
+
+
+def _new_worker(client, app, firm, passport, visa="3 години"):
+    eid = _id_from(client.post("/employers/new", data=_employer(firm)))
+    c = _db(app)
+    uzb = c.execute("SELECT id FROM country WHERE iso3='UZB'").fetchone()[0]
+    c.close()
+    cid = _id_from(client.post("/candidates/new", data={
+        "name_lat": "Run Worker", "name_cyr": "Пуск Работник", "birth_date": "01.01.1990", "passport_no": passport,
+        "citizenship_id": str(uzb), "birth_place": "City", "passport_issue_date": "01.01.2020",
+        "passport_expiry": "01.01.2035", "employer_id": str(eid), "visa_type": visa, "position_new": "Общ работник"}))
+    c = _db(app)
+    pid = c.execute("SELECT position_id FROM candidate WHERE id=?", (cid,)).fetchone()[0]
+    c.close()
+    return cid, pid
+
+
+def _run(client, cid):
+    html = client.post(f"/candidates/{cid}/run", follow_redirects=True).data.decode()
+    return html[html.index('id="pipeline"'):html.index('id="schedule"')]
+
+
+def _gens(app, cid):
+    c = _db(app)
+    try:
+        return c.execute('SELECT count(*) FROM generation g JOIN "case" k ON k.id=g.case_id WHERE k.candidate_id=?',
+                         (cid,)).fetchone()[0]
+    finally:
+        c.close()
+
+
+def test_one_click_runs_until_data_is_missing_and_continues(client, app, monkeypatch):
+    import io
+    from docautomate import ai_text
+    monkeypatch.setattr(ai_text, "ai_available", lambda: False)
+    cid, pid = _new_worker(client, app, "ПУСК ООД", "RW1")
+
+    # nothing to show that the papers went to legalisation: the run stops at once and says what is missing
+    panel = _run(client, cid)
+    assert "Статусът не е сменен" in panel and "Няма прикачен файл: Паспорт и свидетелство за съдимост" in panel
+    assert _status(app, cid) == "Нов"
+
+    client.post(f"/attachments/worker/{cid}/passport", data={"files": [(io.BytesIO(b"PDF"), "p.pdf")]},
+                content_type="multipart/form-data")
+    panel = _run(client, cid)
+    assert "„Нов“ → „Изпратен легализация“" in panel and "Обосновката на длъжността е празна" in panel
+    assert "AI не е включен" in panel and f"/positions/{pid}#ai-panel" in panel
+    assert _status(app, cid) == "Изпратен легализация"
+
+    client.post(f"/positions/{pid}", data={"title": "Общ работник", "obosnovka": "Абзац.", "dh_duties": "Задължение"})
+    panel = _run(client, cid)
+    assert "„Изпратен легализация“ → „Готови документи“" in panel and "Документите са генерирани" in panel
+    assert 'href="#s-in_no"' in panel and _status(app, cid) == "Готови документи" and _gens(app, cid) == 1
+
+    client.post(f"/schedule/{cid}", json={"in_no": "АА-1", "filed_date": "20.11.2026"})
+    panel = _run(client, cid)
+    assert _status(app, cid) == "Подаден Миграция" and _gens(app, cid) == 2
+    assert "Натиснете „Следваща стъпка: Подаден АЗ“" in panel  # no field shows the filing at the agency
+
+    _next(client, cid, "Подаден АЗ")
+    client.post(f"/schedule/{cid}", json={"permit_date": "21.11.2026", "visa_interview_date": "22.11.2026",
+                                          "visa_date": "23.11.2026", "arrival_date": "24.11.2026"})
+    panel = _run(client, cid)
+    assert _status(app, cid) == "Пристигане България" and "Регистрация Миграция" in panel
+    client.post(f"/schedule/{cid}", json={"migration_reg_date": "25.11.2026"})
+    panel = _run(client, cid)
+    assert _status(app, cid) == "Работещ" and "последния етап" in panel
+    c = _db(app)
+    hist = [r[0] for r in c.execute("SELECT new_status FROM status_history WHERE candidate_id=? ORDER BY id", (cid,))]
+    c.close()
+    assert hist == list(sched.STATUSES[1:])
+
+
+def test_run_writes_missing_texts_with_ai_and_never_saves_the_fallback(client, app, monkeypatch):
+    import io
+    from docautomate import ai_text
+    cid, pid = _new_worker(client, app, "АИ ООД", "RW2")
+    client.post(f"/attachments/worker/{cid}/passport", data={"files": [(io.BytesIO(b"PDF"), "p.pdf")]},
+                content_type="multipart/form-data")
+    monkeypatch.setattr(ai_text, "ai_available", lambda: True)
+    monkeypatch.setattr(ai_text, "draft", lambda kind, pos, emp, **kw: ai_text.Draft(
+        {"obosnovka": "Нечетен текст"} if kind == "obosnovka" else {"dh_duties": "Чужд текст"}, "template", ["AI не успя (x)."]))
+    panel = _run(client, cid)
+    assert "не е написана: AI не успя" in panel and _status(app, cid) == "Изпратен легализация"
+    c = _db(app)
+    assert tuple(c.execute("SELECT obosnovka, dh_duties FROM position WHERE id=?", (pid,)).fetchone()) == ("", "")
+    c.close()
+
+    monkeypatch.setattr(ai_text, "draft", lambda kind, pos, emp, **kw: ai_text.Draft(
+        {"obosnovka": "Първи абзац.\nВтори абзац."} if kind == "obosnovka" else {"dh_purpose": "Цел", "dh_duties": "Работа"},
+        "ai", []))
+    panel = _run(client, cid)
+    assert "написана с AI" in panel and _status(app, cid) == "Готови документи" and _gens(app, cid) == 1
+    c = _db(app)
+    assert tuple(c.execute("SELECT obosnovka, dh_duties FROM position WHERE id=?", (pid,)).fetchone()) == \
+        ("Първи абзац.\nВтори абзац.", "Работа")
+    c.close()
+
+
+def test_run_from_the_workers_list(client, app, monkeypatch):
+    import io
+    cid, pid = _new_worker(client, app, "СПИСЪК ООД", "RW3")
+    html = client.get("/candidates").data.decode()
+    assert f'action="/candidates/{cid}/run"' in html
+    client.post(f"/attachments/worker/{cid}/passport", data={"files": [(io.BytesIO(b"PDF"), "p.pdf")]},
+                content_type="multipart/form-data")
+    r = client.post(f"/candidates/{cid}/run")
+    assert r.status_code == 302 and r.headers["Location"].endswith(f"/candidates/{cid}#pipeline")
+    assert _status(app, cid) == "Изпратен легализация"
+    html = client.get(f"/candidates/{cid}").data.decode()
+    assert "Направено" in html  # the summary is shown once on the profile
+    assert "Направено" not in client.get(f"/candidates/{cid}").data.decode()

@@ -58,6 +58,11 @@ class Check:
     link: str = ""             # where to fix it (anchor or URL), filled in by the view
     blank: bool = False        # a template field that will print as „……“ (shown folded)
     miss: str = ""             # wording when the check fails, if different from `text`
+    auto: bool = False         # required by „Пусни процеса“ (the one-click run) even when soft for the button
+
+    @property
+    def stops_run(self) -> bool:
+        return not self.ok and (self.hard or self.auto)
 
     @property
     def label(self) -> str:
@@ -72,6 +77,12 @@ class Step:
     checks: list = field(default_factory=list)
     generate: bool = False     # the step generates the documents of the visa type
     note: str = ""
+    manual: str = ""           # why the one-click run stops here: no data shows the step happened
+
+    @property
+    def run_blockers(self) -> list:
+        """Checks that stop „Пусни процеса“ at this step."""
+        return [c for c in self.checks if c.stops_run]
 
     @property
     def blocked(self) -> bool:
@@ -115,18 +126,20 @@ def plan_step(w: dict, *, attachments: set, doc_plan: dict | None, position: dic
         return step
     nxt, c = step.next, step.checks
 
-    def need(key, label, hard=True, link="#schedule"):
-        c.append(Check(_filled(w, key), f"Попълнено: {label}", hard, link, miss=f"Не е попълнено: {label}"))
+    def need(key, label, hard=True, link=None, auto=False):
+        link = link or (f"#s-{key}" if key in sched.EDITABLE else "#schedule")
+        c.append(Check(_filled(w, key), f"Попълнено: {label}", hard, link, miss=f"Не е попълнено: {label}",
+                       auto=auto))
 
-    def attach(cat, label, hard=False):
+    def attach(cat, label, hard=False, auto=False):
         c.append(Check(cat in attachments, f"Прикачен файл: {label}", hard, "#attachments",
-                       miss=f"Няма прикачен файл: {label}"))
+                       miss=f"Няма прикачен файл: {label}", auto=auto))
 
     if nxt == "Изпратен легализация":
         need("visa_type", "Тип виза", link="#cand-form")
         need("employer_id", "Работодател", link="#cand-form")
         need("position_id", "Длъжност", link="#cand-form")
-        attach("passport", "Паспорт и свидетелство за съдимост")
+        attach("passport", "Паспорт и свидетелство за съдимост", auto=True)
     elif nxt == "Готови документи":
         need("visa_type", "Тип виза", link="#cand-form")
         need("employer_id", "Работодател", link="#cand-form")
@@ -153,6 +166,10 @@ def plan_step(w: dict, *, attachments: set, doc_plan: dict | None, position: dic
         need("in_no", "Входящ номер")
         need("filed_date", "Дата на входиране")
         step.generate = True   # the control sheet carries the incoming number
+    elif nxt in FILING_STATUSES:
+        # DEFAULT: no field records the filing at the Employment Agency, so the run asks a person
+        step.manual = (f"Няма поле, от което да се види, че е „{nxt}“. Натиснете „Следваща стъпка: {nxt}“,"
+                       " когато е направено, и пуснете процеса пак.")
     elif nxt == "Получено разрешение":
         need("permit_date", "Получено разрешение Миграция")
         attach("permit", "Разрешение Миграция")
@@ -164,8 +181,8 @@ def plan_step(w: dict, *, attachments: set, doc_plan: dict | None, position: dic
         attach("visa_interview", "Документи интервю виза")
     elif nxt == "Преминал интервю":
         d = sched._day(w.get("visa_interview_date"))
-        c.append(Check(bool(d and d <= today), "Датата на интервюто за виза е минала", False,
-                       miss="Датата на интервюто за виза още не е минала или липсва"))
+        c.append(Check(bool(d and d <= today), "Датата на интервюто за виза е минала", False, "#s-visa_interview_date",
+                       miss="Датата на интервюто за виза още не е минала или липсва", auto=True))
     elif nxt == "Получена виза":
         need("visa_date", "Получена виза")
     elif nxt == "Пристигане България":
@@ -173,9 +190,9 @@ def plan_step(w: dict, *, attachments: set, doc_plan: dict | None, position: dic
         need("ticket_date", "Самолетен билет", hard=False)
     elif nxt == "Работещ":
         if visa == "Удължаване":
-            need("residence_until", "Срок на пребиваване", hard=False)
+            need("residence_until", "Срок на пребиваване", hard=False, auto=True)
         else:
-            need("migration_reg_date", "Регистрация Миграция", hard=False)
+            need("migration_reg_date", "Регистрация Миграция", hard=False, auto=True)
             attach("nap", "НАП")
     return step
 

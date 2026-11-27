@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from flask import (Flask, abort, flash, jsonify, redirect, render_template, request,
-                   send_file, url_for)
+                   send_file, session, url_for)
 from werkzeug.utils import secure_filename
 
 from . import db as dbm
@@ -332,7 +332,7 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
                                                  " ORDER BY id DESC", (cid or 0,)).fetchall(),
                                plan=worker_doc_plan(cid) if row else None, users=auth.active_users(),
                                gens=_worker_generations(cid) if row else ([], {}), pdf=render.converter_name(),
-                               step=worker_step(cid) if row else None)
+                               step=worker_step(cid) if row else None, run=_pop_run(cid))
 
     # ------------------------------------------------------------ Справки (График)
     sort_fields = {k for k, _ in sched.DATE_FIELDS} | {"created_at"}
@@ -555,6 +555,13 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
         return redirect(url_for("candidate", cid=cid) + "#documents")
 
     # ------------------------------------------------------------ pipeline: „Следваща стъпка“
+    def _pop_run(cid):
+        r = session.get("pipeline_run")
+        if r and cid and r.get("cid") == cid:
+            session.pop("pipeline_run")
+            return r
+        return None
+
     def worker_step(cid):
         d = get_db()
         w = _one("SELECT ca.*, co.iso3 FROM candidate ca LEFT JOIN country co ON co.id=ca.citizenship_id"
@@ -602,6 +609,81 @@ def _register(app: Flask) -> None:  # noqa: C901  (one place for all routes keep
             text += " Препоръчително: " + "; ".join(short) + "."
         flash(text, "ok")
         return redirect(back)
+
+    def _ai_texts_for(cid, w):
+        """Before „Готови документи“: write the missing justification and job description with AI.
+        Fills only empty fields of the position and saves them. Returns lines for the run summary."""
+        if not w["position_id"]:
+            return []
+        d = get_db()
+        pos = dict(d.execute("SELECT * FROM position WHERE id=?", (w["position_id"],)).fetchone())
+        kinds = []
+        if w["visa_type"] == "Удължаване":
+            if not (pos.get("obosnovka_ext") or pos.get("obosnovka") or "").strip():
+                kinds.append("obosnovka_ext")
+        elif w["visa_type"] != "3 месеца" and not (pos.get("obosnovka") or "").strip():
+            kinds.append("obosnovka")
+        if not (pos.get("dh_duties") or "").strip():
+            kinds.append("dh")
+        if not kinds:
+            return []
+        if not ai_text.ai_available():
+            return ["AI не е включен (няма ANTHROPIC_API_KEY в .env), затова обосновката и ДХ не са написани сами."]
+        emp = dict(d.execute("SELECT * FROM employer WHERE id=?", (w["employer_id"],)).fetchone() or {})
+        out, names = [], {"obosnovka": "Обосновката", "obosnovka_ext": "Обосновката за удължаване",
+                          "dh": "Длъжностната характеристика"}
+        for kind in kinds:
+            dr = ai_text.draft(kind, pos, emp)
+            if dr.source != "ai":  # never save the fallback sentences with their [placeholders]
+                out.append(f"{names[kind]} не е написана: " + " ".join(dr.warnings[-1:]))
+                continue
+            fields = {k: v for k, v in dr.fields.items() if not (pos.get(k) or "").strip()}
+            if fields:
+                _update("position", pos["id"], fields)
+                pos.update(fields)
+                out.append(f"{names[kind]} е написана с AI и записана в длъжността. Прегледайте я.")
+        return out
+
+    def run_pipeline(cid):
+        """„Пусни процеса“: walk the worker along the path of the visa type as far as the data allows.
+        Each move is the same manual status change as the step button (checks, documents, history)."""
+        done, notes, stop = [], [], None
+        for _ in range(len(sched.STATUSES) + 1):
+            step, _ = worker_step(cid)
+            if not step.next:
+                stop = {"kind": "end", "text": step.note or "Няма следваща стъпка.", "items": []}
+                break
+            if step.next == "Готови документи":
+                w = _one("SELECT * FROM candidate WHERE id=?", cid)
+                ai_lines = _ai_texts_for(cid, w)
+                notes += ai_lines
+                if ai_lines:
+                    step, _ = worker_step(cid)
+            blockers = step.run_blockers
+            if blockers:
+                stop = {"kind": "blocked", "text": f"Спря преди „{step.next}“. Попълнете:",
+                        "items": [[c.label, c.link] for c in blockers]}
+                break
+            if step.manual:
+                stop = {"kind": "manual", "text": step.manual, "items": []}
+                break
+            if step.generate:
+                ok, msg = _generate_for_worker(cid)
+                if not ok:
+                    stop = {"kind": "error", "text": f"Спря на „{step.current}“: документите не се генерираха. {msg}",
+                            "items": [["Документи за Миграция", "#documents"]]}
+                    break
+                notes.append(f"При „{step.next}“: {msg}")
+            set_status(cid, step.next)
+            done.append([step.current, step.next])
+        return {"done": done, "notes": notes, "stop": stop}
+
+    @app.post("/candidates/<int:cid>/run")
+    def worker_run(cid):
+        """„Пусни процеса“ from the profile or the workers list."""
+        _one("SELECT id FROM candidate WHERE id=?", cid)
+        session["pipeline_run"] = {"cid": cid, **run_pipeline(cid)}
+        return redirect(url_for("candidate", cid=cid) + "#pipeline")
 
     def _worker_generations(cid):
         d = get_db()

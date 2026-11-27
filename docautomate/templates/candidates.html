@@ -4,12 +4,13 @@
 <tr class="row-link" data-href="{{ url_for('candidate', cid=r.id) }}">
   <td class="num muted">{{ r.ref_no }}</td>
   <td><a href="{{ url_for('candidate', cid=r.id) }}" title="Отваря профила на работника">{{ r.name_cyr or '(без име)' }}</a></td>
+  <td class="run-cell"><span class="small">{{ r.status }}</span><form method="post" action="{{ url_for('worker_run', cid=r.id) }}" class="inline-run"><button class="btn small" title="Пуска процеса за този работник: минава етапите, докъдето стигат данните, и отваря профила с резултата">▶ Пусни</button></form></td>
   <td>{{ r.name_lat }}</td><td>{{ r.passport_no }}</td><td>{{ r.citizenship or '' }}</td>
   <td>{{ r.birth_date|bgdate }}</td><td>{{ r.employer or '' }}</td><td>{{ r.position or '' }}</td><td>{{ r.visa_type }}</td><td>{{ r.contact }}</td>
 </tr>
 {%- endmacro %}
 {% macro head() -%}
-<thead><tr><th class="num">№</th><th>Име на кирилица</th><th>Име на латиница</th><th>Паспорт №</th><th>Страна на произход</th>
+<thead><tr><th class="num">№</th><th>Име на кирилица</th><th>Статус</th><th>Име на латиница</th><th>Паспорт №</th><th>Страна на произход</th>
 <th>Дата на раждане</th><th>Работодател</th><th>Длъжност</th><th>Тип виза</th><th>Контакт</th></tr></thead>
 {%- endmacro %}
 {% block body %}
