@@ -144,3 +144,19 @@ def test_failed_send_is_logged_not_raised(client, app, monkeypatch):
     assert not ok and "няма връзка" in err
     assert c.execute("SELECT ok FROM mail_log").fetchone()[0] == 0
     assert [k for k, _ in mailer.due(c, datetime(2026, 11, 30, 9, 0))][0] == "delays"  # retried later
+
+
+def test_mail_settings_can_come_from_env_and_the_screen_wins(client, app, monkeypatch):
+    c = _db(app)
+    for k, v in {"SMTP_HOST": "smtp.example.com", "SMTP_USER": "office@example.com", "SMTP_PASSWORD": "pw",
+                 "MAIL_FROM": "office@example.com", "MAIL_TO": "office@example.com"}.items():
+        monkeypatch.setenv("DOCAUTOMATE_" + k, v)
+    s = mailer.settings(c)
+    assert (s["smtp_host"], s["mail_from"], s["smtp_password"], s["smtp_port"]) == \
+        ("smtp.example.com", "office@example.com", "pw", "465")
+    assert mailer.recipients(c) == ["office@example.com"] and mailer.configured(c)
+    html = client.get("/settings/mail").data.decode()
+    assert "office@example.com" in html and 'value="pw"' not in html  # the password is never shown
+    mailer.save_settings(c, {"mail_from": "other@example.com", "smtp_host": ""})
+    s = mailer.settings(c)
+    assert s["mail_from"] == "other@example.com" and s["smtp_host"] == "smtp.example.com"  # empty on screen = .env

@@ -6,6 +6,7 @@ keeps what was sent and any error.
 """
 from __future__ import annotations
 
+import os
 import smtplib
 import ssl
 import threading
@@ -46,6 +47,11 @@ FIELDS = (
     ("base_url", "Адрес на програмата за линковете", "напр. http://127.0.0.1:5000 или Cloudflare линка"),
 )
 DEFAULTS = {"smtp_port": "465", "smtp_security": "ssl", "send_hour": "8", "base_url": "http://127.0.0.1:5000"}
+# Values the office can keep in the local .env instead of the screen (the password stays out of the
+# database that way). A value saved on the „Имейл рапорти“ screen wins over .env.
+ENV = {"smtp_host": "SMTP_HOST", "smtp_port": "SMTP_PORT", "smtp_security": "SMTP_SECURITY",
+       "smtp_user": "SMTP_USER", "smtp_password": "SMTP_PASSWORD", "mail_from": "MAIL_FROM",
+       "mail_extra": "MAIL_TO", "send_hour": "MAIL_HOUR", "base_url": "BASE_URL"}
 
 
 def init(conn) -> None:
@@ -54,7 +60,11 @@ def init(conn) -> None:
 
 def settings(conn) -> dict:
     out = dict(DEFAULTS)
-    out.update({r[0]: r[1] for r in conn.execute("SELECT key, value FROM setting")})
+    for key, name in ENV.items():
+        value = os.environ.get("DOCAUTOMATE_" + name, "").strip()
+        if value:
+            out[key] = value
+    out.update({r[0]: r[1] for r in conn.execute("SELECT key, value FROM setting") if (r[1] or "").strip()})
     return out
 
 
