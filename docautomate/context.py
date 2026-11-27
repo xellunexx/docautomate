@@ -103,7 +103,9 @@ PLACEHOLDERS: dict[str, tuple[str, str]] = {
     "position.title_ru": ("Длъжност на руски (ако няма – българската)", "Подсобный рабочий"),
     "position.nkpd": ("Код по НКПД", "96220001"),
     "position.occupation_class": ("Клас професии", "неквалифицирани работници"),
-    "position.workplace": ("Място на работа (адресът от профила на работника; ако няма – от длъжността)",
+    "employer.workplace": ("Адрес на месторабота на фирмата (първият от профила; ако няма – седалището)",
+                           "гр. София, ул. Работна 5"),
+    "position.workplace": ("Място на работа (на работника; ако няма – на длъжността, на фирмата, седалището)",
                            "гр. София, ул. Работна 5"),
     "position.reporting_line": ("Пряко подчинение", "Управителя"),
     "position.obosnovka": ("Обосновка – целият текст (при удължаване – текстът за удължаване, ако има)", "…"),
@@ -189,11 +191,14 @@ def build_context(conn: sqlite3.Connection, case_id: int) -> dict:
     if case is None:
         raise LookupError(f"Няма случай №{case_id}")
     cand = conn.execute("SELECT * FROM candidate WHERE id=?", (case["candidate_id"],)).fetchone()
-    emp = conn.execute("SELECT * FROM employer WHERE id=?", (case["employer_id"],)).fetchone()
+    emp = dict(conn.execute("SELECT * FROM employer WHERE id=?", (case["employer_id"],)).fetchone())
+    first = conn.execute("SELECT address FROM employer_address WHERE employer_id=? ORDER BY sort_order, id LIMIT 1",
+                         (case["employer_id"],)).fetchone()
+    emp["workplace"] = first["address"] if first else ""
     pos = conn.execute("SELECT * FROM position WHERE id=?", (case["position_id"],)).fetchone() \
         if case["position_id"] else None
     ctype = conn.execute("SELECT * FROM case_type WHERE id=?", (case["case_type_id"],)).fetchone()
-    ctx = assemble(dict(cand), dict(emp), dict(pos) if pos else {}, dict(case), dict(ctype),
+    ctx = assemble(dict(cand), emp, dict(pos) if pos else {}, dict(case), dict(ctype),
                    _country(conn, cand["citizenship_id"]), _country(conn, cand["birth_country_id"]))
     ctx["housing_workers"] = housing_workers(conn, cand)
     return ctx
@@ -257,6 +262,7 @@ def assemble(cand: dict, emp: dict, pos: dict, case: dict, ctype: dict,
         "name": emp.get("name"),
         "eik": emp.get("eik"),
         "address": emp.get("address"),
+        "workplace": emp.get("workplace") or emp.get("address"),
         "rep_name": emp.get("rep_name"),
         "rep_role": emp.get("rep_role"),
         "rep_egn": emp.get("rep_egn"),
@@ -273,7 +279,8 @@ def assemble(cand: dict, emp: dict, pos: dict, case: dict, ctype: dict,
         "title_ru": pos.get("title_ru") or pos.get("title"),
         "nkpd": pos.get("nkpd"),
         "occupation_class": pos.get("occupation_class"),
-        "workplace": cand.get("workplace_address") or pos.get("workplace"),
+        # where the work is done: the worker's address, else the position's, else the employer's, else the seat
+        "workplace": cand.get("workplace_address") or pos.get("workplace") or emp.get("workplace") or emp.get("address"),
         "reporting_line": pos.get("reporting_line"),
         "obosnovka": obosnovka,
         "obosnovka_paragraphs": _paragraphs(obosnovka),
@@ -383,6 +390,7 @@ def sample_context() -> dict:
         "qualification": "", "residence_address": "гр. София, ж.к. Примерен, бл. 1", "ref_no": 1001,
     }
     emp = {"name": "ПРИМЕР ЕООД", "eik": "200000000", "address": "гр. София, ул. Примерна 10",
+           "workplace": "гр. София, ул. Работна 5",
            "rep_name": "Георги Иванов Петров", "rep_role": "управител", "rep_gender": "M",
            "rep_egn": "0000000000", "phone": "+359888000000", "email": "office@example.bg"}
     pos = {"title": "Общ работник", "nkpd": "96220001", "occupation_class": "неквалифицирани работници",
