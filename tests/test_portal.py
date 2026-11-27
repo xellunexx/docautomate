@@ -35,6 +35,18 @@ class FakeSynchro(BaseHTTPRequestHandler):
             self.wfile.flush()
             self.connection.shutdown(2)
             return
+        if self.path.startswith("/api/who"):
+            return self._send(200, {k: self.headers.get(k) for k in ("Cookie", "Authorization", "Cf-Connecting-Ip",
+                                                                        "X-Forwarded-Proto", "X-Forwarded-For")})
+        if self.path.startswith("/api/file"):
+            data = b"<script>alert(1)</script>"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Disposition", "inline; filename*=UTF-8''x.html")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if self.path.startswith("/api/hop"):
             return self._send(200, {"x_hop": self.headers.get("X-Hop"), "enc": self.headers.get("Content-Encoding")},
                               [("Connection", "X-Up"), ("X-Up", "1"), ("Content-Encoding", "identity")])
@@ -79,7 +91,8 @@ def test_choosing_synchro_passes_everything_on(app, synchro):
     r = c.post("/api/auth/login", json={"username": "x"}, headers=TUNNEL)
     assert r.get_json() == {"got": {"username": "x"}}
     cookies = r.headers.getlist("Set-Cookie")
-    assert any(v.startswith("erp_sid=abc") for v in cookies) and any(v.startswith("other=1") for v in cookies)
+    assert any(v.startswith("erp_sid=abc") for v in cookies), "Synchro's login cookie gets through"
+    assert not any(v.startswith("other=1") for v in cookies), "no other cookie may be set on the shared address"
     assert c.get("/api/missing").status_code == 404
     css = c.get("/static/style.css")
     assert css.status_code == 200 and "text/css" in css.headers["Content-Type"], "the chooser keeps its own styles"
@@ -117,3 +130,32 @@ def test_proxy_keeps_the_address_and_follows_http_rules(app, synchro):
     assert "X-Up" not in r.headers and r.headers["Content-Encoding"] == "identity"
     r = c.get("/api/cut")
     assert r.status_code == 502 and "/portal/go/docautomate" in r.get_data(as_text=True)
+
+
+def test_each_program_keeps_its_own_cookies_and_trusted_headers(app, synchro):
+    c = app.test_client()
+    c.get("/portal/go/synchro")
+    c.set_cookie("session", "docautomate-login")
+    c.set_cookie("erp_sid", "s1")
+    spoof = {"Authorization": "Basic eA==", "X-Forwarded-Proto": "https", "X-Forwarded-For": "1.2.3.4"}
+    # opened on this computer, without the tunnel: nothing the browser claims is passed on
+    got = c.get("/api/who", headers=spoof, environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json()
+    assert "session=" not in got["Cookie"] and "erp_sid=s1" in got["Cookie"] and "portal=synchro" in got["Cookie"]
+    assert got["Authorization"] is None and got["X-Forwarded-For"] is None
+    assert got["X-Forwarded-Proto"] == "http"
+    # another computer on the network looks public to Synchro (login limits per address, no first setup)
+    got = c.get("/api/who", headers={**spoof, "Cf-Connecting-Ip": "1.2.3.4"},
+                environ_base={"REMOTE_ADDR": "192.168.1.20"}).get_json()
+    assert got["Cf-Connecting-Ip"] == "192.168.1.20"
+    # through the tunnel: the visitor's address from Cloudflare, and https
+    got = c.get("/api/who", headers=TUNNEL).get_json()
+    assert got["Cf-Connecting-Ip"] == "203.0.113.7" and got["X-Forwarded-Proto"] == "https"
+
+
+def test_an_uploaded_page_is_downloaded_not_opened(app, synchro):
+    c = app.test_client()
+    c.get("/portal/go/synchro")
+    r = c.get("/api/file")
+    assert r.headers["Content-Disposition"].startswith("attachment;") and "x.html" in r.headers["Content-Disposition"]
+    assert r.headers["X-Content-Type-Options"] == "nosniff"
+    assert "Content-Disposition" not in c.get("/api/orders").headers, "ordinary answers stay as they are"
