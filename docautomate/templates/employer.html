@@ -10,20 +10,20 @@
 <p class="intro">{{ 'Промените влизат във всички документи, генерирани след запис.' if row else 'Профилът се създава, когато са попълнени шестте задължителни полета (със звездичка).' }}</p>
 {{ error_box(errors) }}
 <form method="post" class="grid-form">
-  {% for f in fields %}{{ field(f, values, errors) }}{% endfor %}
+  {% for f in fields %}{{ field(f, values, errors) }}{% if f.name == 'address' %}
   <div class="field wide" id="addr-field">
-    <label>Адреси на месторабота</label>
+    <label>Адрес на месторабота (ако е различен от седалището)</label>
     <div id="addr-list">
       {% for a in (addresses or ['']) %}<div class="addr-row"><input name="addresses" value="{{ a }}" aria-label="Адрес на месторабота">
         <button type="button" class="btn link danger addr-del" title="Маха този адрес от списъка (след запис)">махни</button></div>{% endfor %}
     </div>
     <button type="button" class="btn" id="addr-add" title="Добавя още един ред за адрес на месторабота">+ Още адрес</button>
-    <p class="help">По желание. При работника се избира един от тези адреси.</p>
-  </div>
+    <p class="help">Къде се работи реално. Ако е празно, в документите влиза седалището. Може няколко обекта; при работника се избира един.</p>
+  </div>{% endif %}{% endfor %}
   <div class="form-actions"><button class="btn primary" title="Записва данните на фирмата и адресите">Запиши работодателя</button></div>
 </form>
 {% if row %}
-<div id="attachments">{{ attachments(attach_groups, files, 'employer', row.id) }}</div>
+<div id="attachments">{{ attachments(attach_groups, files, 'employer', row.id, title='Фирмени документи', help='Регистрация, удостоверения, договори и др. Може да изберете няколко файла наведнъж. Файловете се пазят на този компютър.') }}</div>
 
 <div class="head-row"><h2>Работници при фирмата ({{ workers|length }})</h2></div>
 {% if workers %}

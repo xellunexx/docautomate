@@ -30,15 +30,15 @@
 </div>
 {%- endmacro %}
 
-{% macro attachments(groups, files, owner_type, owner_id) -%}
+{% macro attachments(groups, files, owner_type, owner_id, title='Прикачени документи', help='Всяко поле е по желание. Може да изберете няколко файла наведнъж. Файловете се пазят на този компютър.') -%}
 {# One upload field per category; files listed under it with download and delete. #}
 <section class="panel attach">
-  <h2>Прикачени документи</h2>
-  <p class="help">Всяко поле е по желание. Може да изберете няколко файла наведнъж. Файловете се пазят на този компютър.</p>
+  <h2>{{ title }}</h2>
+  <p class="help">{{ help }}</p>
   <div class="attach-grid">
   {% for key, label in groups %}
     <div class="attach-box">
-      <h3>{{ label }}</h3>
+      {% if groups|length > 1 %}<h3>{{ label }}</h3>{% endif %}
       {% set mine = files.get(key, []) %}
       {% if mine %}<ul class="files">
         {% for a in mine %}<li><a href="{{ url_for('attachment_get', aid=a.id) }}" target="_blank" title="Отваря файла в нов раздел">{{ a.original_name }}</a>
