@@ -27,6 +27,17 @@ class FakeSynchro(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True})
         if self.path.startswith("/api/missing"):
             return self._send(404, {"error": "Няма такъв адрес"})
+        if self.path.startswith("/api/cut"):  # promises 100 bytes, sends 2, hangs up
+            self.send_response(200)
+            self.send_header("Content-Length", "100")
+            self.end_headers()
+            self.wfile.write(b"{}")
+            self.wfile.flush()
+            self.connection.shutdown(2)
+            return
+        if self.path.startswith("/api/hop"):
+            return self._send(200, {"x_hop": self.headers.get("X-Hop"), "enc": self.headers.get("Content-Encoding")},
+                              [("Connection", "X-Up"), ("X-Up", "1"), ("Content-Encoding", "identity")])
         self._send(200, {"path": self.path, "cookie": self.headers.get("Cookie"), "cf": self.headers.get("Cf-Connecting-Ip")})
 
     def do_POST(self):
@@ -94,3 +105,15 @@ def test_unknown_choice_and_spoofed_tunnel_header(app, synchro):
     # a Cloudflare header from a non-local address is not the tunnel
     r = c.get("/", headers=TUNNEL, environ_base={"REMOTE_ADDR": "198.51.100.1"})
     assert "/portal" not in r.headers["Location"]
+
+
+def test_proxy_keeps_the_address_and_follows_http_rules(app, synchro):
+    c = app.test_client()
+    c.get("/portal/go/synchro")
+    assert c.get("/api/orders/%D0%90%23x?q=%D0%B0").get_json()["path"] == "/api/orders/%D0%90%23x?q=%D0%B0"
+    assert c.get("/api/orders/1?status=active").get_json()["path"] == "/api/orders/1?status=active"
+    r = c.get("/api/hop", headers={"Connection": "X-Hop", "X-Hop": "secret", "Content-Encoding": "gzip"})
+    assert r.get_json() == {"x_hop": None, "enc": "gzip"}, "a header named by Connection stays on this hop"
+    assert "X-Up" not in r.headers and r.headers["Content-Encoding"] == "identity"
+    r = c.get("/api/cut")
+    assert r.status_code == 502 and "/portal/go/docautomate" in r.get_data(as_text=True)
